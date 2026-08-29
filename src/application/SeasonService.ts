@@ -25,6 +25,14 @@ export type HolePrizeMetadata = {
 
 export type FantasyLeagueSeed = FantasyLeague;
 
+export type ReservePro = {
+  id: string;
+  displayName: string;
+  email: string;
+  gender: 'male' | 'female';
+  reason: string;
+};
+
 export type RealisticLeagueSeed = {
   season: SeasonBootstrapResult;
   course: Course;
@@ -33,6 +41,7 @@ export type RealisticLeagueSeed = {
   schedule: EventSchedule;
   holeMetadata: readonly HolePrizeMetadata[];
   realLeagueTeams: readonly Team[];
+  reservePros: readonly ReservePro[];
   fantasyLeagues: readonly FantasyLeagueSeed[];
 };
 
@@ -158,19 +167,27 @@ export class SeasonService {
       schedule.addEvent(eventDates[index], event);
     }
 
-    const realLeagueTeams: Team[] = [];
-    for (let index = 1; index <= 12; index += 1) {
-      const male = new UserProfile(`real-m-${index}`, `Male ${index}`, `male${index}@example.com`);
-      const female = new UserProfile(`real-f-${index}`, `Female ${index}`, `female${index}@example.com`);
-      realLeagueTeams.push(
-        new Team(
-          `team-${index}`,
-          `Team ${index}`,
-          { id: male.id, displayName: male.displayName, email: male.email, gender: 'male' },
-          { id: female.id, displayName: female.displayName, email: female.email, gender: 'female' },
-        ),
-      );
-    }
+    const realLeagueTeams: Team[] = [
+      new Team('team-1', 'Ace Makers', { id: 'real-m-1', displayName: 'Simon Lizotte', email: 'simon@fli.example.com', gender: 'male' }, { id: 'real-f-1', displayName: 'Kat Mertsch', email: 'kat@fli.example.com', gender: 'female' }),
+      new Team('team-2', 'Birdie Storm', { id: 'real-m-2', displayName: 'Isaac Robinson', email: 'isaac@fli.example.com', gender: 'male' }, { id: 'real-f-2', displayName: 'Missy Gannon', email: 'missy@fli.example.com', gender: 'female' }),
+      new Team('team-3', 'Chain Breakers', { id: 'real-m-3', displayName: 'Paul McBeth', email: 'paul@fli.example.com', gender: 'male' }, { id: 'real-f-3', displayName: 'Holyn Handley', email: 'holyn@fli.example.com', gender: 'female' }),
+      new Team('team-4', 'Chain Seekers', { id: 'real-m-4', displayName: 'Anthony Barela', email: 'anthony@fli.example.com', gender: 'male' }, { id: 'real-f-4', displayName: 'Hailey King', email: 'hailey@fli.example.com', gender: 'female' }),
+      new Team('team-5', 'Disc Dynasty', { id: 'real-m-5', displayName: 'Chris Dickerson', email: 'chris@fli.example.com', gender: 'male' }, { id: 'real-f-5', displayName: 'Paige Pierce', email: 'paige@fli.example.com', gender: 'female' }),
+      new Team('team-6', 'Disc Jesters', { id: 'real-m-6', displayName: 'Kyle Klein', email: 'kyle@fli.example.com', gender: 'male' }, { id: 'real-f-6', displayName: 'Silva Saarinen', email: 'silva@fli.example.com', gender: 'female' }),
+      new Team('team-7', 'Fairway Bombers', { id: 'real-m-7', displayName: 'Niklas Anttila', email: 'niklas@fli.example.com', gender: 'male' }, { id: 'real-f-7', displayName: 'Heidi Laine', email: 'heidi@fli.example.com', gender: 'female' }),
+      new Team('team-8', 'Flight Squad', { id: 'real-m-8', displayName: 'Calvin Heimburg', email: 'calvin@fli.example.com', gender: 'male' }, { id: 'real-f-8', displayName: 'Ohn Scoggins', email: 'ohn@fli.example.com', gender: 'female' }),
+      new Team('team-9', 'Glide Masters', { id: 'real-m-9', displayName: 'Ezra Robinson', email: 'ezra@fli.example.com', gender: 'male' }, { id: 'real-f-9', displayName: 'Natalie Ryan', email: 'natalie@fli.example.com', gender: 'female' }),
+      new Team('team-10', 'Huk-a-Mania', { id: 'real-m-10', displayName: 'Ricky Wysocki', email: 'ricky@fli.example.com', gender: 'male' }, { id: 'real-f-10', displayName: 'Evelina Salonen', email: 'evelina@fli.example.com', gender: 'female' }),
+      new Team('team-11', 'Hyzer Heros', { id: 'real-m-11', displayName: 'Gannon Buhr', email: 'gannon@fli.example.com', gender: 'male' }, { id: 'real-f-11', displayName: 'Kristin Latt', email: 'kristin@fli.example.com', gender: 'female' }),
+      new Team('team-12', 'Midas Touch', { id: 'real-m-12', displayName: 'Matthew Orum', email: 'matthew@fli.example.com', gender: 'male' }, { id: 'real-f-12', displayName: 'Ella Hansen', email: 'ella@fli.example.com', gender: 'female' }),
+    ];
+
+    const reservePros: ReservePro[] = [
+      { id: 'reserve-1', displayName: 'Nate Doss', email: 'nate@fli.example.com', gender: 'male', reason: 'Travel backup' },
+      { id: 'reserve-2', displayName: 'Mariah Smith', email: 'mariah@fli.example.com', gender: 'female', reason: 'Late-swap coverage' },
+      { id: 'reserve-3', displayName: 'Avery Jenkins', email: 'avery@fli.example.com', gender: 'male', reason: 'Course-specific replacement' },
+      { id: 'reserve-4', displayName: 'Stevie Mickelson', email: 'stevie@fli.example.com', gender: 'female', reason: 'Injury relief' },
+    ];
 
     const fantasyLeagues: FantasyLeagueSeed[] = [
       new FantasyLeague(
@@ -193,6 +210,7 @@ export class SeasonService {
       schedule,
       holeMetadata,
       realLeagueTeams,
+      reservePros,
       fantasyLeagues,
     };
   }

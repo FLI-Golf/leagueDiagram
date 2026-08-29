@@ -23,4 +23,34 @@ describe('User profile domain model', () => {
     expect(profile.displayName).toBe('Jordan L.');
     expect(profile.email).toBe('jordan.lee@newmail.com');
   });
+
+  it('A UserProfile can carry app roles and allow pro content posts', () => {
+    const profile = new UserProfile(
+      'pro-1',
+      'Simon Lizotte',
+      'simon@fli.example.com',
+      ['pro', 'fantasyParticipant', 'viewer'],
+      'Disc golf pro and content creator',
+    );
+
+    expect(profile.hasRole('pro')).toBe(true);
+    expect(profile.hasRole('leagueAdmin')).toBe(false);
+
+    profile.addFanPost('Training day in the gym and on the course.');
+
+    expect(profile.getFanPosts()).toHaveLength(1);
+    expect(profile.getFanPosts()[0].body).toContain('Training day');
+  });
+
+  it('A UserProfile can carry site admin and scorekeeper roles', () => {
+    const profile = new UserProfile('site-admin-1', 'Taylor Thompson', 'taylor@fli.example.com', [
+      'siteAdmin',
+      'scorekeeper',
+      'viewer',
+    ]);
+
+    expect(profile.hasRole('siteAdmin')).toBe(true);
+    expect(profile.hasRole('scorekeeper')).toBe(true);
+    expect(profile.hasRole('viewer')).toBe(true);
+  });
 });
