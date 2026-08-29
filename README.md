@@ -1,1 +1,1 @@
-# leageDiogram
+#leagueDuogram
