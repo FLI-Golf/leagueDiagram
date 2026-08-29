@@ -2,13 +2,13 @@ import { Course } from '../domain/course/Course';
 import { League } from '../domain/league/League';
 import { EventSchedule } from '../domain/league/EventSchedule';
 import { LeagueTable } from '../domain/league/LeagueTable';
-import { Player } from '../domain/player/Player';
+import { ProPlayer } from '../domain/player/Player';
 import { Scorecard } from '../domain/player/Scorecard';
 import { TournamentResult } from '../domain/tournament/TournamentResult';
 
 export class LeagueApp {
   private readonly league: League;
-  private readonly players: Player[] = [];
+  private readonly players: ProPlayer[] = [];
   private readonly courses: Course[] = [];
   private readonly eventSchedule: EventSchedule;
   private readonly leagueTable: LeagueTable;
@@ -19,8 +19,8 @@ export class LeagueApp {
     this.leagueTable = new LeagueTable(id, `${name} Standings`);
   }
 
-  registerPlayer(id: string, displayName: string, email: string): Player {
-    const player = new Player(id, displayName, email);
+  registerPlayer(id: string, displayName: string, email: string): ProPlayer {
+    const player = new ProPlayer(id, displayName, email);
     this.players.push(player);
     this.league.addMember({
       id: player.id,
@@ -46,7 +46,7 @@ export class LeagueApp {
     return this.league;
   }
 
-  getPlayers(): readonly Player[] {
+  getPlayers(): readonly ProPlayer[] {
     return [...this.players];
   }
 

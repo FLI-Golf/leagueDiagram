@@ -22,7 +22,7 @@ export { LeagueInvite } from './league/LeagueInvite';
 export { LeagueMembership } from './league/LeagueMembership';
 export { LeagueTable } from './league/LeagueTable';
 export { Season } from './league/Season';
-export { Player } from './player/Player';
+export { Player, ProPlayer } from './player/Player';
 export { Round } from './player/Round';
 export { Scorecard } from './player/Scorecard';
 export { Standing } from './player/Standing';

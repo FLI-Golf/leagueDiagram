@@ -1,6 +1,13 @@
 export type PlayerGender = 'male' | 'female';
 
-export class Player {
+export type ProPlayerSeed = {
+  id: string;
+  displayName: string;
+  email: string;
+  gender: PlayerGender;
+};
+
+export class ProPlayer {
   readonly id: string;
   readonly displayName: string;
   readonly email: string;
@@ -12,4 +19,10 @@ export class Player {
     this.email = email;
     this.gender = gender;
   }
+
+  static fromSeed(seed: ProPlayerSeed): ProPlayer {
+    return new ProPlayer(seed.id, seed.displayName, seed.email, seed.gender);
+  }
 }
+
+export { ProPlayer as Player };
