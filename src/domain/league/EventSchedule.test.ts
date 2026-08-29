@@ -66,4 +66,14 @@ describe('Tournament and league results model', () => {
     expect(schedule.getEvents()[0].date).toBe('2026-04-15');
     expect(schedule.getEvents()[1].date).toBe('2026-05-10');
   });
+
+  it('An EventSchedule can record the course for each tournament event', () => {
+    const schedule = new EventSchedule('league-1');
+    const open = new TournamentResult('t-6', 'Opening Event', []);
+
+    schedule.addEvent('2026-05-10', open, 'Turf Paradise');
+
+    expect(schedule.getEvents()[0].courseName).toBe('Turf Paradise');
+    expect(schedule.getEvents()[0].courseId).toBeUndefined();
+  });
 });

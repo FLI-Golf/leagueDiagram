@@ -33,9 +33,28 @@ export type ReservePro = {
   reason: string;
 };
 
+export type PayoutPlacement = {
+  place: number;
+  label: string;
+  amount: number;
+};
+
+export type TournamentPayoutSummary = {
+  name: string;
+  date: string;
+  eventTotal: number;
+  placements: readonly PayoutPlacement[];
+};
+
+export type SeasonPayoutBreakdown = {
+  totalPurse: number;
+  events: readonly TournamentPayoutSummary[];
+};
+
 export type RealisticLeagueSeed = {
   season: SeasonBootstrapResult;
   course: Course;
+  courseOptions: readonly Course[];
   tournamentNames: readonly string[];
   sponsors: readonly Sponsor[];
   schedule: EventSchedule;
@@ -43,6 +62,7 @@ export type RealisticLeagueSeed = {
   realLeagueTeams: readonly Team[];
   reservePros: readonly ReservePro[];
   fantasyLeagues: readonly FantasyLeagueSeed[];
+  payoutBreakdown: SeasonPayoutBreakdown;
 };
 
 export class SeasonService {
@@ -60,11 +80,48 @@ export class SeasonService {
     users: readonly UserProfile[],
     fantasyTeams: readonly FantasyTeam[],
     tournamentControls: readonly DraftControlSettings[],
+    purseAmount = 4_000_000,
   ): SeasonBootstrapResult {
-    return this.bootstrap.build(users, fantasyTeams, tournamentControls);
+    return this.bootstrap.build(users, fantasyTeams, tournamentControls, purseAmount);
   }
 
-  static createDemoSeason(id: string, name: string): SeasonBootstrapResult {
+  static canCreateSeason(user: UserProfile): boolean {
+    return user.hasRole('leagueAdmin') || user.hasRole('scorekeeper');
+  }
+
+  static createNamedSeason(id: string, name: string, purseAmount = 4_000_000): RealisticLeagueSeed {
+    return SeasonService.createRealisticLeagueSeed(id, name, purseAmount);
+  }
+
+  static createProgressivePayoutBreakdown(): SeasonPayoutBreakdown {
+    const eventTotals = [400_000, 480_000, 560_000, 720_000, 720_000, 1_120_000];
+    const eventDates = ['2026-09-01', '2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10'];
+    const eventNames = ['September Open', 'Blackwood Clash', 'Ridge Rumble', 'Autumn Classic', 'Pine Valley Showdown', 'Championship Weekend'];
+    const weights = [0.24, 0.2, 0.16, 0.12, 0.08, 0.06, 0.04, 0.03, 0.02, 0.02, 0.01, 0.02];
+
+    const events = eventNames.map((name, index) => {
+      const eventTotal = eventTotals[index];
+      const placements = Array.from({ length: 12 }, (_, placementIndex) => ({
+        place: placementIndex + 1,
+        label: `${placementIndex + 1}${placementIndex === 0 ? 'st' : placementIndex === 1 ? 'nd' : placementIndex === 2 ? 'rd' : 'th'} place`,
+        amount: Math.round(eventTotal * weights[placementIndex]),
+      }));
+
+      return {
+        name,
+        date: eventDates[index],
+        eventTotal,
+        placements,
+      };
+    });
+
+    return {
+      totalPurse: 4_000_000,
+      events,
+    };
+  }
+
+  static createDemoSeason(id: string, name: string, purseAmount = 4_000_000): SeasonBootstrapResult {
     const users = [
       new UserProfile('u-1', 'Jamie Reed', 'jamie@example.com'),
       new UserProfile('u-2', 'Morgan Fox', 'morgan@example.com'),
@@ -104,47 +161,117 @@ export class SeasonService {
       new DraftControlSettings(60, 'descending'),
     ];
 
-    return new SeasonService(id, name).bootstrapSeason(users, fantasyTeams, tournamentControls);
+    return new SeasonService(id, name).bootstrapSeason(users, fantasyTeams, tournamentControls, purseAmount);
   }
 
-  static createRealisticLeagueSeed(id: string, name: string): RealisticLeagueSeed {
-    const season = SeasonService.createDemoSeason(id, name);
+  static createRealisticLeagueSeed(id: string, name: string, purseAmount = 4_000_000): RealisticLeagueSeed {
+    const season = SeasonService.createDemoSeason(id, name, purseAmount);
 
-    const course = new Course('course-blackwood-ridge', 'Blackwood Ridge');
-    const sponsorA = new Sponsor('s-1', 'Hawkeye Gear', 'Premium discs and apparel', 'https://example.com/hawkeye.png');
-    const sponsorB = new Sponsor('s-2', 'River City BBQ', 'Smoked meats and cold drinks', 'https://example.com/rivercity.png');
-    const sponsorC = new Sponsor('s-3', 'Summit Coffee', 'Fresh roast and cold brew', 'https://example.com/summitcoffee.png');
-
-    const holeDefinitions = [
-      { number: 1, name: 'Opening Drive', description: 'A wide, forgiving fairway to settle in and start the round clean.', basketSetup: 'Blue basket setup' },
-      { number: 2, name: 'Dogleg Bend', description: 'A gentle right turn with a line that protects the lane.', basketSetup: 'Blue basket setup' },
-      { number: 3, name: 'Cedar Chute', description: 'The most wooded hole on the front nine with a demanding approach.', basketSetup: 'Blue basket setup' },
-      { number: 4, name: 'Long Cross', description: 'A longer drive with a crosswind that punishes weak discs.', basketSetup: 'Blue basket setup' },
-      { number: 5, name: 'The Pit', description: 'A tight wooded landing area that rewards patience and placement.', basketSetup: 'Blue basket setup' },
-      { number: 6, name: 'Pine Point', description: 'A perfectly framed fairway with a quick, downhill green.', basketSetup: 'Blue basket setup' },
-      { number: 7, name: 'Marsh Run', description: 'A long carry over wet ground and a soft approach to the green.', basketSetup: 'Blue basket setup' },
-      { number: 8, name: 'Switchback', description: 'A sharp left turn before the green with little room for error.', basketSetup: 'Blue basket setup' },
-      { number: 9, name: 'Final Fade', description: 'A confident finish with a flattering landing area and a scenic finish.', basketSetup: 'Blue basket setup' },
+    const course = new Course('course-turf-paradise', 'Turf Paradise');
+    const alternateCourse = new Course('course-arizona-athletic-grounds', 'Arizona Athletic Grounds');
+    const sponsorA = new Sponsor('s-1', "America's Mobile", 'Wireless Mobile • $100,000 • LOI Signed', 'https://example.com/americas-mobile.png');
+    const sponsorB = new Sponsor('s-2', 'Sur Coffee', 'Beverage • $125,000 • LOI Signed', 'https://example.com/sur-coffee.png');
+    const sponsorC = new Sponsor('s-3', 'SCCG Management', 'Advisory Partner • $500,000 to $900,000 • LOI Signed', 'https://example.com/sccg-management.png');
+    const officialSponsors = [
+      sponsorA,
+      sponsorB,
+      sponsorC,
+      new Sponsor('s-4', 'GK Productions (Go Throw League)', 'Media Partner • $100,000 to $200,000 • LOI Signed', 'https://example.com/gk-productions.png'),
+      new Sponsor('s-5', 'Coghlan Technology Group', 'Technology • LOI Signed', 'https://example.com/coghlan.png'),
+      new Sponsor('s-6', 'Pure Mobile Productions', 'Media Production • LOI Signed', 'https://example.com/pure-mobile-productions.png'),
+      new Sponsor('s-7', 'Smart Boost', 'Social Media • LOI Signed', 'https://example.com/smart-boost.png'),
+      new Sponsor('s-8', 'Neology', 'Social Media • LOI Signed', 'https://example.com/neology.png'),
+      new Sponsor('s-9', 'Turf Paradise', 'Venue • $100,000 • LOI Signed', 'https://example.com/turf-paradise.png'),
+      new Sponsor('s-10', 'State Farm Insurance', 'Insurance • LOI Signed', 'https://example.com/state-farm.png'),
+      new Sponsor('s-11', 'Creekside Sponsor', 'Course-side branding and sponsor support.', 'https://example.com/creekside-sponsor.png'),
+    ];
+    const leagueSponsors = officialSponsors;
+    const genericObstacleSponsors = [
+      new Sponsor('obs-1', 'Creekside Sponsor', 'Course-side branding for the water feature.', 'https://example.com/creekside.png'),
+      new Sponsor('obs-2', 'Hazard Partners', 'Obstacle branding and on-course signage.', 'https://example.com/hazard.png'),
+      new Sponsor('obs-3', 'Fairway Support', 'Support for the landing zone and approach lane.', 'https://example.com/fairway.png'),
     ];
 
-    for (const hole of holeDefinitions) {
-      const courseHole = new Hole(`h-${hole.number}`, hole.number, hole.name, hole.description, hole.basketSetup);
-      if (hole.number === 3) {
-        courseHole.addSponsor(sponsorA);
-      }
-      if (hole.number === 6) {
-        courseHole.addSponsor(sponsorB);
-      }
-      if (hole.number === 9) {
-        courseHole.addSponsor(sponsorC);
-      }
+    const turfParadiseHoles = [
+      { number: 1, name: 'Ridge View', description: 'A tight par 3 with a soft dogleg that rewards precision off the tee.', basketSetup: 'Short nine blue basket setup', distance: 210 },
+      { number: 2, name: 'Canyon Cut', description: 'A mid-range shot with a creek guarding the fairway on the approach.', basketSetup: 'Short nine blue basket setup', distance: 295 },
+      { number: 3, name: 'Briar Line', description: 'The landing area narrows around a tree line and a fast green.', basketSetup: 'Short nine blue basket setup', distance: 180 },
+      { number: 4, name: 'Dogleg Drop', description: 'An obstacle-lined hole with a slight left break and a small green.', basketSetup: 'Short nine blue basket setup', distance: 240 },
+      { number: 5, name: 'Mesa Glide', description: 'A gradually uphill shot with a shallow green and a forgiving right side.', basketSetup: 'Short nine blue basket setup', distance: 330 },
+      { number: 6, name: 'Pine Capsule', description: 'A compact green surrounded by trees and an elevated tee.', basketSetup: 'Short nine blue basket setup', distance: 150 },
+      { number: 7, name: 'Desert Drift', description: 'A longer approach that asks for a stable line over the lake hazard.', basketSetup: 'Short nine blue basket setup', distance: 380 },
+      { number: 8, name: 'After Dark Patio 21+', description: 'The party hole: fans and guests must be 21+ on this side of the course.', basketSetup: 'Short nine blue basket setup', distance: 135 },
+      { number: 9, name: 'Sunset Finish', description: 'An open finishing hole with enough room to go for the aggressive line.', basketSetup: 'Short nine blue basket setup', distance: 425 },
+    ];
+
+    const arizonaAthleticGroundsHoles = [
+      { number: 1, name: 'Blue Sky Tee', description: 'A clean opening line with a gentle rise and a forgiving landing zone.', basketSetup: 'Short nine red basket setup', distance: 230 },
+      { number: 2, name: 'Crimson Run', description: 'A right-side ridge keeps the green visually tight but still very fair.', basketSetup: 'Short nine red basket setup', distance: 315 },
+      { number: 3, name: 'Fence Line', description: 'A strong mid-range shot with added pressure from the fairway edge.', basketSetup: 'Short nine red basket setup', distance: 200 },
+      { number: 4, name: 'Windmill Bend', description: 'A crosswind approach that rewards a smooth and confident flight.', basketSetup: 'Short nine red basket setup', distance: 260 },
+      { number: 5, name: 'South Loop', description: 'The green sits behind a small mound, making the landing window feel narrower than it looks.', basketSetup: 'Short nine red basket setup', distance: 340 },
+      { number: 6, name: 'Mile Marker', description: 'An elevated tee forces a clear line to avoid the rough on the right.', basketSetup: 'Short nine red basket setup', distance: 170 },
+      { number: 7, name: 'North Arc', description: 'A longer fade is rewarded if the player can hold the middle of the fairway.', basketSetup: 'Short nine red basket setup', distance: 390 },
+      { number: 8, name: 'After Hours Lounge 21+ Party', description: 'The 21+ party hole with a lively atmosphere and dedicated spectator zone.', basketSetup: 'Short nine red basket setup', distance: 165 },
+      { number: 9, name: 'Final Stamp', description: 'A confident finishing putt with a wide green and a strong closing feel.', basketSetup: 'Short nine red basket setup', distance: 435 },
+    ];
+
+    const blueSetupAdjustments = [0, -8, 12, -10, 15, 14, -12, 18, -16];
+    const redSetupAdjustments = [10, -6, 14, -12, 18, 16, -14, 20, -18];
+
+    for (const [index, hole] of turfParadiseHoles.entries()) {
+      const basketDelta = blueSetupAdjustments[index];
+      const basketAdjustedDistance = Math.max(110, Math.min(440, hole.distance + basketDelta));
+      const courseHole = new Hole(
+        `short-h-${hole.number}`,
+        hole.number,
+        hole.name,
+        hole.description,
+        hole.basketSetup,
+        3,
+        basketAdjustedDistance,
+        hole.distance,
+        basketDelta,
+        basketDelta < 0 ? 'left' : basketDelta > 0 ? 'right' : null,
+      );
+      const sponsor = genericObstacleSponsors[(hole.number - 1) % genericObstacleSponsors.length];
+      const officialSupportSponsor = officialSponsors[(hole.number - 1) % officialSponsors.length];
+      courseHole.addSponsor(sponsor);
+      courseHole.addSponsor(officialSupportSponsor);
       course.addHole(courseHole);
     }
 
+    for (const [index, hole] of arizonaAthleticGroundsHoles.entries()) {
+      const basketDelta = redSetupAdjustments[index];
+      const redAdjustedDistance = Math.max(110, Math.min(440, hole.distance + basketDelta));
+      const courseHole = new Hole(
+        `alt-short-h-${hole.number}`,
+        hole.number,
+        hole.name,
+        hole.description,
+        hole.basketSetup,
+        3,
+        redAdjustedDistance,
+        hole.distance,
+        basketDelta,
+        basketDelta < 0 ? 'left' : basketDelta > 0 ? 'right' : null,
+      );
+      const sponsor = genericObstacleSponsors[(hole.number + 1) % genericObstacleSponsors.length];
+      const officialSupportSponsor = officialSponsors[(hole.number + 2) % officialSponsors.length];
+      courseHole.addSponsor(sponsor);
+      courseHole.addSponsor(officialSupportSponsor);
+      alternateCourse.addHole(courseHole);
+    }
+
+    const courseOptions = [course, alternateCourse];
+
     const tournamentNames = [
-      'Spring Opener',
-      'Midseason Mixer',
-      'Championship Weekend',
+      'America\'s Mobile Open',
+      'Sur Coffee Showdown',
+      'SCCG Management Invitational',
+      'Go Throw League Cup',
+      'Turf Paradise Clash',
+      'State Farm Championship Weekend',
     ];
 
     const holeMetadata: HolePrizeMetadata[] = [
@@ -160,11 +287,22 @@ export class SeasonService {
     ];
 
     const schedule = new EventSchedule(`${id}-schedule`);
-    const eventDates = ['2026-04-15', '2026-05-20', '2026-06-27'];
+    const firstEventDate = new Date('2026-09-01T00:00:00Z');
+
+    const eventCourseAssignments = [
+      'Turf Paradise',
+      'Arizona Athletic Grounds',
+      'Turf Paradise',
+      'Arizona Athletic Grounds',
+      'Turf Paradise',
+      'Arizona Athletic Grounds',
+    ];
 
     for (let index = 0; index < tournamentNames.length; index += 1) {
+      const eventDate = new Date(firstEventDate);
+      eventDate.setUTCDate(eventDate.getUTCDate() + index * 14);
       const event = new TournamentResult(`t-${index + 1}`, tournamentNames[index], []);
-      schedule.addEvent(eventDates[index], event);
+      schedule.addEvent(eventDate.toISOString().slice(0, 10), event, eventCourseAssignments[index] ?? 'Turf Paradise');
     }
 
     const realLeagueTeams: Team[] = [
@@ -205,13 +343,15 @@ export class SeasonService {
     return {
       season,
       course,
+      courseOptions,
       tournamentNames,
-      sponsors: [sponsorA, sponsorB, sponsorC],
+      sponsors: leagueSponsors,
       schedule,
       holeMetadata,
       realLeagueTeams,
       reservePros,
       fantasyLeagues,
+      payoutBreakdown: SeasonService.createProgressivePayoutBreakdown(),
     };
   }
 }

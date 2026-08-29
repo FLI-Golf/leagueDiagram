@@ -31,6 +31,12 @@ describe('League domain model', () => {
     expect(season.getTournaments()[0]).toBe(tournament);
   });
 
+  it('A Season uses a default 4 million purse amount', () => {
+    const season = new TestSeason('2025 Season', 2025);
+
+    expect(season.purseAmount).toBe(4_000_000);
+  });
+
   it('A Season can contain exactly 6 Tournaments', () => {
     const season = new TestSeason('2025 Season', 2025);
 

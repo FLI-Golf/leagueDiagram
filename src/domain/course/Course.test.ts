@@ -61,4 +61,11 @@ describe('Course domain model', () => {
     expect(course.buildTournamentRound()[9].name).toBe(backNine[0].name);
     expect(course.buildTournamentRound()[17].name).toBe(backNine[8].name);
   });
+
+  it('A hole can show a clear baseline distance and basket move note when setup changes', () => {
+    const hole = new Hole('h-10', 10, 'Moved Tee', 'A shifted basket changes the approach.', 'Blue basket setup', 3, 222, 210, -8, 'left');
+
+    expect(hole.getDistanceLabel()).toBe('210 ft / 222 ft');
+    expect(hole.getBasketMoveNote()).toBe('Basket moved 8 ft left');
+  });
 });

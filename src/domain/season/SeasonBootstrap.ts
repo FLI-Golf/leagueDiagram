@@ -25,9 +25,14 @@ export class SeasonBootstrap {
     this.name = name;
   }
 
-  build(users: readonly UserProfile[], fantasyTeams: readonly FantasyTeam[], tournamentControls: readonly DraftControlSettings[]): SeasonBootstrapResult {
+  build(
+    users: readonly UserProfile[],
+    fantasyTeams: readonly FantasyTeam[],
+    tournamentControls: readonly DraftControlSettings[],
+    purseAmount = 4_000_000,
+  ): SeasonBootstrapResult {
     const owner = users[0];
-    const league = new UserLeague(`${this.id}-league`, this.name, owner);
+    const league = new UserLeague(`${this.id}-league`, this.name, owner, purseAmount);
 
     for (const user of users.slice(1)) {
       league.invite({ leagueId: league.id, userId: user.id, status: 'pending' });

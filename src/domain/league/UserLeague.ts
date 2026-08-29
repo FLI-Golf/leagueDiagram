@@ -7,13 +7,15 @@ export class UserLeague {
   readonly id: string;
   readonly name: string;
   readonly ownerId: string;
+  readonly purseAmount: number;
   private readonly invites: LeagueInvite[] = [];
   private readonly participants: Map<string, LeagueMembership> = new Map();
 
-  constructor(id: string, name: string, owner: UserProfile) {
+  constructor(id: string, name: string, owner: UserProfile, purseAmount = 4_000_000) {
     this.id = id;
     this.name = name;
     this.ownerId = owner.id;
+    this.purseAmount = purseAmount;
     this.participants.set(owner.id, new LeagueMembership(owner.id, 'owner'));
   }
 

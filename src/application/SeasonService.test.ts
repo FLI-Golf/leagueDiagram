@@ -47,14 +47,20 @@ describe('Season service facade', () => {
     const seed = SeasonService.createRealisticLeagueSeed('realistic-seed-1', 'Summer League');
 
     expect(seed.season.league.getParticipants()).toHaveLength(6);
-    expect(seed.course.name).toBe('Blackwood Ridge');
+    expect(seed.course.name).toBe('Turf Paradise');
     expect(seed.course.getHoles()).toHaveLength(9);
-    expect(seed.tournamentNames).toHaveLength(3);
-    expect(seed.sponsors).toHaveLength(3);
-    expect(seed.course.getHoleByNumber(3).getSponsors()[0].name).toBe('Hawkeye Gear');
-    expect(seed.schedule.getEvents()).toHaveLength(3);
+    expect(seed.course.buildTournamentRound()).toHaveLength(18);
+    expect(seed.course.buildTournamentRound()[8].number).toBe(9);
+    expect(seed.course.buildTournamentRound()[9].number).toBe(1);
+    expect(seed.tournamentNames).toHaveLength(6);
+    expect(seed.sponsors).toHaveLength(11);
+    expect(seed.course.getHoleByNumber(3).getSponsors()[0].name).toMatch(/Creekside Sponsor|Hazard Partners|Fairway Support/);
+    expect(seed.schedule.getEvents()).toHaveLength(6);
+    expect(seed.schedule.getEvents()[0].date).toBe('2026-09-01');
+    expect(seed.schedule.getEvents()[1].date).toBe('2026-09-15');
+    expect(seed.schedule.getEvents()[2].date).toBe('2026-09-29');
     expect(seed.holeMetadata[2].prize.amount).toBe(120);
-    expect(seed.holeMetadata[2].sponsors[0].name).toBe('Hawkeye Gear');
+    expect(seed.holeMetadata[2].sponsors[0].name).toBe("America's Mobile");
   });
 
   it('Creates a realistic league setup that includes 12 mixed-gender teams and six-person fantasy leagues', () => {
@@ -64,5 +70,35 @@ describe('Season service facade', () => {
     expect(seed.realLeagueTeams.every((team) => team.malePlayer.gender === 'male' && team.femalePlayer.gender === 'female')).toBe(true);
     expect(seed.fantasyLeagues).toHaveLength(2);
     expect(seed.fantasyLeagues.every((league) => league.getParticipants().length === 6)).toBe(true);
+  });
+
+  it('Provides two course options including a nine-hole adjustable par-3 course with generic obstacle sponsors', () => {
+    const seed = SeasonService.createRealisticLeagueSeed('realistic-seed-3', 'Summer League');
+
+    expect(seed.courseOptions).toHaveLength(2);
+    const turfCourse = seed.courseOptions.find((course) => course.name === 'Turf Paradise');
+    const shortCourse = seed.courseOptions.find((course) => course.name === 'Arizona Athletic Grounds');
+
+    expect(turfCourse).toBeDefined();
+    expect(shortCourse).toBeDefined();
+    expect(shortCourse?.getHoles()).toHaveLength(9);
+    expect(shortCourse?.getHoles().every((hole) => hole.par === 3)).toBe(true);
+    expect(shortCourse?.getHoles().every((hole) => hole.distance >= 110 && hole.distance <= 440)).toBe(true);
+    expect(shortCourse?.getHoles()[0].getSponsors()[0].name).toMatch(/Creekside Sponsor|Hazard Partners|Fairway Support/);
+    expect(turfCourse?.getHoleByNumber(8).name).not.toBe(shortCourse?.getHoleByNumber(8).name);
+    expect(turfCourse?.getHoleByNumber(8).name).toMatch(/Party|21/);
+    expect(shortCourse?.getHoleByNumber(8).name).toMatch(/Party|21/);
+  });
+
+  it('Creates a progressive payout table that pays all 12 teams in order of finish and totals the 4 million purse', () => {
+    const payoutBreakdown = SeasonService.createProgressivePayoutBreakdown();
+
+    expect(payoutBreakdown.totalPurse).toBe(4_000_000);
+    expect(payoutBreakdown.events).toHaveLength(6);
+    expect(payoutBreakdown.events[0].eventTotal).toBe(400_000);
+    expect(payoutBreakdown.events[5].eventTotal).toBe(1_120_000);
+    expect(payoutBreakdown.events[0].placements).toHaveLength(12);
+    expect(payoutBreakdown.events[0].placements[0].amount).toBe(96_000);
+    expect(payoutBreakdown.events[5].placements[0].amount).toBe(268_800);
   });
 });

@@ -46,4 +46,72 @@ describe('Scorekeeper pipeline', () => {
     expect(pipeline.isReadyForApproval()).toBe(true);
     expect(() => pipeline.approve()).not.toThrow();
   });
+
+  it('Generates competitive pairings by balancing strengths across the field', () => {
+    const makeTeam = (id: string, name: string): Team => {
+      const male = new Player(`${id}-male`, `${name} Male`, `${id}.male@example.com`, 'male');
+      const female = new Player(`${id}-female`, `${name} Female`, `${id}.female@example.com`, 'female');
+      return new Team(id, name, male, female);
+    };
+
+    const teams = [
+      makeTeam('team-1', 'Alpha'),
+      makeTeam('team-2', 'Bravo'),
+      makeTeam('team-3', 'Charlie'),
+      makeTeam('team-4', 'Delta'),
+      makeTeam('team-5', 'Echo'),
+      makeTeam('team-6', 'Foxtrot'),
+    ];
+
+    const groups = Group.generateCompetitivePairings(teams);
+
+    expect(groups).toHaveLength(3);
+    expect(groups.map((group) => group.teams.map((team) => team.name))).toEqual([
+      ['Alpha', 'Foxtrot'],
+      ['Bravo', 'Echo'],
+      ['Charlie', 'Delta'],
+    ]);
+  });
+
+  it('Creates a six-event season with no repeated opponent matchups', () => {
+    const makeTeam = (id: string, name: string): Team => {
+      const male = new Player(`${id}-male`, `${name} Male`, `${id}.male@example.com`, 'male');
+      const female = new Player(`${id}-female`, `${name} Female`, `${id}.female@example.com`, 'female');
+      return new Team(id, name, male, female);
+    };
+
+    const teams = [
+      makeTeam('team-1', 'Alpha'),
+      makeTeam('team-2', 'Bravo'),
+      makeTeam('team-3', 'Charlie'),
+      makeTeam('team-4', 'Delta'),
+      makeTeam('team-5', 'Echo'),
+      makeTeam('team-6', 'Foxtrot'),
+      makeTeam('team-7', 'Golf'),
+      makeTeam('team-8', 'Hotel'),
+      makeTeam('team-9', 'India'),
+      makeTeam('team-10', 'Juliet'),
+      makeTeam('team-11', 'Kilo'),
+      makeTeam('team-12', 'Lima'),
+    ];
+
+    const seasonPairings = Group.generateSeasonPairings(teams, 6);
+
+    expect(seasonPairings).toHaveLength(6);
+
+    const seenOpponents = new Set<string>();
+    for (const roundGroups of seasonPairings) {
+      const roundKeys = new Set<string>();
+      for (const group of roundGroups) {
+        const pair = [...group.teams].map((team) => team.name).sort();
+        const pairKey = pair.join('|');
+        expect(roundKeys.has(pairKey)).toBe(false);
+        roundKeys.add(pairKey);
+
+        const matchupKey = pair.join('|');
+        expect(seenOpponents.has(matchupKey)).toBe(false);
+        seenOpponents.add(matchupKey);
+      }
+    }
+  });
 });
