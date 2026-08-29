@@ -37,7 +37,11 @@ let scorekeeperAssignments: Record<string, string> = { ...defaultScorekeeperAssi
 let scorekeeperScoringStage: 'assignment' | 'scoring' | 'complete' = 'assignment';
 let currentScoringHoleIndex = 0;
 let scorekeeperScoresByHole: Record<number, Record<string, string>> = {};
+let approvedGroups: Record<string, boolean> = {};
+let selectedApprovalGroup = scorekeeperGroupLabels[0] ?? '';
 let lastScoreDirection: 'next' | 'previous' = 'next';
+
+const SCOREKEEPER_STATE_STORAGE_KEY = 'league-demo-scorekeeper-state';
 const app = document.querySelector('#app');
 if (!app) {
   throw new Error('App root not found');
@@ -45,6 +49,103 @@ if (!app) {
 
 const PRO_STORAGE_KEY = 'league-demo-pro-fan-posts';
 const USER_STORAGE_KEY = 'league-demo-current-user';
+
+const getStoredScorekeeperState = (): Partial<{
+  assignments: Record<string, string>;
+  scoringStage: 'assignment' | 'scoring' | 'complete';
+  currentScoringHoleIndex: number;
+  scoresByHole: Record<number, Record<string, string>>;
+  approvedGroups: Record<string, boolean>;
+}> => {
+  try {
+    const raw = window.localStorage.getItem(SCOREKEEPER_STATE_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveScorekeeperState = (): void => {
+  try {
+    window.localStorage.setItem(
+      SCOREKEEPER_STATE_STORAGE_KEY,
+      JSON.stringify({
+        assignments: scorekeeperAssignments,
+        scoringStage: scorekeeperScoringStage,
+        currentScoringHoleIndex,
+        scoresByHole: scorekeeperScoresByHole,
+        approvedGroups,
+      }),
+    );
+  } catch {
+    // Ignore storage failures in local mock mode.
+  }
+};
+
+const resetScorekeeperState = (): void => {
+  scorekeeperAssignments = { ...defaultScorekeeperAssignments };
+  scorekeeperScoringStage = 'assignment';
+  currentScoringHoleIndex = 0;
+  scorekeeperScoresByHole = {};
+  approvedGroups = {};
+  window.localStorage.removeItem(SCOREKEEPER_STATE_STORAGE_KEY);
+  renderApp();
+};
+
+const resetAllMockData = (): void => {
+  resetScorekeeperState();
+  window.localStorage.removeItem(USER_STORAGE_KEY);
+  setCurrentUser(proProfiles[0].id);
+  renderApp();
+};
+
+const seedAllGroupScoresForTesting = (): void => {
+  const defaultSeed = {
+    0: { '+1': '+1', '+2': '+2' },
+  };
+
+  scorekeeperScoresByHole = {};
+  approvedGroups = {};
+
+  scorekeeperGroupLabels.forEach((group) => {
+    const lineups = scorekeeperGroupLineups[group] ?? [];
+    const playerKeys = lineups.flatMap((lineup) => lineup.players.map((player) => `${group}|${lineup.teamName}|${player}`));
+
+    for (let holeIndex = 0; holeIndex < 18; holeIndex += 1) {
+      const holeScores: Record<string, string> = {};
+      const value = holeIndex % 3 === 0 ? '+1' : holeIndex % 3 === 1 ? 'E' : '+2';
+      playerKeys.forEach((playerKey) => {
+        holeScores[playerKey] = value;
+      });
+      scorekeeperScoresByHole[holeIndex] = {
+        ...(scorekeeperScoresByHole[holeIndex] ?? {}),
+        ...holeScores,
+      };
+    }
+  });
+
+  scorekeeperScoringStage = 'complete';
+  currentScoringHoleIndex = 17;
+  saveScorekeeperState();
+  renderApp();
+};
+
+const persistedScorekeeperState = getStoredScorekeeperState();
+if (persistedScorekeeperState.assignments) {
+  scorekeeperAssignments = { ...defaultScorekeeperAssignments, ...persistedScorekeeperState.assignments };
+}
+if (persistedScorekeeperState.scoringStage) {
+  scorekeeperScoringStage = persistedScorekeeperState.scoringStage;
+}
+if (typeof persistedScorekeeperState.currentScoringHoleIndex === 'number') {
+  currentScoringHoleIndex = persistedScorekeeperState.currentScoringHoleIndex;
+}
+if (persistedScorekeeperState.scoresByHole) {
+  scorekeeperScoresByHole = persistedScorekeeperState.scoresByHole;
+}
+if (persistedScorekeeperState.approvedGroups) {
+  approvedGroups = persistedScorekeeperState.approvedGroups;
+}
 
 const proProfiles = [
   new UserProfile('simon-lizotte', 'Simon Lizotte', 'simon@fli.example.com', ['pro', 'fantasyParticipant', 'viewer'], 'Disc golf pro and content creator'),
@@ -149,6 +250,7 @@ const submitScorekeeperScoringForm = (form: HTMLFormElement, direction: 'next' |
     currentScoringHoleIndex += 1;
   }
 
+  saveScorekeeperState();
   renderApp();
 };
 
@@ -243,11 +345,11 @@ const getAssignedGroupForUser = (user: UserProfile): string | null => {
 };
 
 const getRoleMenus = (user: UserProfile): Array<{ label: string; href: string; detail: string; isActive: boolean }> => {
-  const dashboardFilterOptions = ['Manage league', 'Scorekeeper scorecard', 'Standings', 'Fantasy league', 'Draft controls', 'Fantasy roster', 'League activity', 'Fan feed', 'Team profile', 'Player content', 'Overview'];
+  const dashboardFilterOptions = ['Approve scores', 'Manage league', 'Scorekeeper assignment', 'Scorekeeper scorecard', 'Standings', 'Fantasy league', 'Draft controls', 'Fantasy roster', 'League activity', 'Fan feed', 'Team profile', 'Player content', 'Overview'];
   const activeFilter = dashboardFilterOptions.includes(selectedDashboardFilter)
     ? selectedDashboardFilter
     : user.hasRole('leagueAdmin')
-      ? 'Manage league'
+      ? 'Approve scores'
       : user.hasRole('scorekeeper')
         ? 'Scorekeeper scorecard'
         : 'Overview';
@@ -260,6 +362,7 @@ const getRoleMenus = (user: UserProfile): Array<{ label: string; href: string; d
   }
 
   if (user.hasRole('leagueAdmin')) {
+    menus.push({ label: 'Approve scores', href: '/', detail: 'Review submitted scores and approve final group results.', isActive: activeFilter === 'Approve scores' });
     menus.push({ label: 'Manage league', href: '/', detail: 'Create Season and Tournaments', isActive: activeFilter === 'Manage league' });
     menus.push({ label: 'Scorekeeper assignment', href: '/', detail: 'Assign scorekeepers to each group and score the round.', isActive: activeFilter === 'Scorekeeper assignment' });
   }
@@ -397,6 +500,128 @@ const renderSeasonCreator = (): string => {
         </label>
         <button type="submit">Create season</button>
       </form>
+    </section>
+  `;
+};
+
+const hasGroupSubmittedAllHoles = (group: string): boolean => {
+  const playerKeys = (scorekeeperGroupLineups[group] ?? []).flatMap((lineup) =>
+    lineup.players.map((player) => `${group}|${lineup.teamName}|${player}`),
+  );
+
+  if (playerKeys.length === 0) {
+    return false;
+  }
+
+  return Array.from({ length: 18 }, (_, holeIndex) => holeIndex).every((holeIndex) => {
+    const holeScores = scorekeeperScoresByHole[holeIndex] ?? {};
+    return playerKeys.some((playerKey) => Object.prototype.hasOwnProperty.call(holeScores, playerKey));
+  });
+};
+
+const renderAdminApprovalDashboard = (): string => {
+  const allGroupsSubmitted = scorekeeperGroupLabels.every(hasGroupSubmittedAllHoles);
+
+  const pendingApprovalGroups = scorekeeperGroupLabels.map((group) => {
+    const isReady = hasGroupSubmittedAllHoles(group);
+    const isApproved = Boolean(approvedGroups[group]);
+    const scorePreviewRows = isReady
+      ? buildGroupScorecard(group, scorekeeperGroupLineups[group] ?? [], scorekeeperScoresByHole)
+          .map(
+            (playerRow) => `
+              <tr>
+                <th scope="row">${playerRow.player}</th>
+                ${playerRow.holeScores
+                  .map(
+                    (entry) => `<td class="scorecard-cell ${entry.relativeToPar === 0 ? 'scorecard-cell--even' : entry.relativeToPar > 0 ? 'scorecard-cell--positive' : 'scorecard-cell--negative'}">${entry.displayValue}</td>`,
+                  )
+                  .join('')}
+                <td class="scorecard-total ${playerRow.totalRelativeToPar === 0 ? 'scorecard-cell--even' : playerRow.totalRelativeToPar > 0 ? 'scorecard-cell--positive' : 'scorecard-cell--negative'}">${playerRow.displayTotal}</td>
+              </tr>
+            `,
+          )
+          .join('')
+      : '';
+
+    return {
+      group,
+      scorekeeper: scorekeeperAssignments[group] ?? 'Unassigned',
+      status: isApproved ? 'Approved' : isReady ? 'Awaiting approval' : 'Pending scorekeeper',
+      isReady,
+      isApproved,
+      scorePreviewRows,
+    };
+  });
+
+  const firstUnapprovedGroup = pendingApprovalGroups.find((group) => !group.isApproved)?.group ?? pendingApprovalGroups[0]?.group ?? '';
+  const selectedGroup = pendingApprovalGroups.some((group) => group.group === selectedApprovalGroup && !group.isApproved)
+    ? selectedApprovalGroup
+    : firstUnapprovedGroup;
+  if (selectedGroup) {
+    selectedApprovalGroup = selectedGroup;
+  }
+
+  const activeGroup = pendingApprovalGroups.find((group) => group.group === selectedApprovalGroup) ?? pendingApprovalGroups[0];
+
+  return `
+    <section class="panel">
+      <div class="section-header-row">
+        <div>
+          <p class="eyebrow">Admin</p>
+          <h2>Approve scores</h2>
+        </div>
+        <span class="tee-time-badge">Review</span>
+      </div>
+
+      <div class="group-grid group-grid--single">
+        ${pendingApprovalGroups
+          .map(
+            (group) => `
+              <button
+                type="button"
+                class="secondary-button ${group.group === selectedApprovalGroup ? 'is-active' : ''}"
+                data-select-approval-group="${group.group}"
+                ${group.isApproved ? 'disabled aria-disabled="true"' : ''}
+              >
+                ${group.group}
+                <span class="menu-detail">${group.status}</span>
+              </button>
+            `,
+          )
+          .join('')}
+      </div>
+
+      ${activeGroup ? `
+        <div class="group-card" style="margin-top: 18px;">
+          <h3>${activeGroup.group}</h3>
+          <p class="role-access-note">${activeGroup.scorekeeper}</p>
+          <div class="payout-meta">${activeGroup.status}</div>
+          ${activeGroup.isReady ? `
+            <div class="scorecard-summary-wrap scorecard-summary-wrap--compact">
+              <table class="scorecard-table scorecard-table--compact">
+                <thead>
+                  <tr>
+                    <th scope="col">Player</th>
+                    ${Array.from({ length: 18 }, (_, index) => `<th scope="col">${index + 1}</th>`).join('')}
+                    <th scope="col">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${activeGroup.scorePreviewRows}
+                </tbody>
+              </table>
+            </div>
+          ` : '<div class="payout-meta">No submitted card yet.</div>'}
+          <button type="button" class="secondary-button" data-approve-group="${activeGroup.group}" ${!activeGroup.isReady || activeGroup.isApproved ? 'disabled aria-disabled="true"' : ''}>${activeGroup.isApproved ? 'Approved' : 'Approve scores'}</button>
+        </div>
+      ` : ''}
+
+      <div class="action-row" style="margin-top: 18px;">
+        <button type="button" class="primary-button" data-seed-all-group-scores="true">Seed all group scores</button>
+        <button type="button" class="primary-button" data-approve-all-scores="true" ${!allGroupsSubmitted ? 'disabled aria-disabled="true"' : ''}>Approve all scores</button>
+        <button type="button" class="secondary-button" data-reset-scorekeeper-state="true">Reset mock scorekeeper state</button>
+        <button type="button" class="secondary-button" data-reset-all-mock-data="true">Reset all mock data</button>
+      </div>
     </section>
   `;
 };
@@ -665,7 +890,7 @@ const renderHomePage = (): string => {
   const currentUser = getCurrentUser();
   const selectedFilter = selectedDashboardFilter || 'Manage league';
 
-  if (selectedFilter === 'Scorekeeper scorecard' || selectedFilter === 'Standings' || (currentUser.hasRole('scorekeeper') && !!getAssignedGroupForUser(currentUser))) {
+  if (selectedFilter === 'Approve scores' || selectedFilter === 'Scorekeeper scorecard' || selectedFilter === 'Standings' || (currentUser.hasRole('scorekeeper') && !!getAssignedGroupForUser(currentUser))) {
     return `
       <main class="page-shell">
         <header class="hero">
@@ -683,7 +908,7 @@ const renderHomePage = (): string => {
           <div class="dashboard-column">${renderLoginPane()}</div>
         </section>
 
-        ${renderScorekeeperDashboard()}
+        ${currentUser.hasRole('leagueAdmin') && selectedFilter === 'Approve scores' ? renderAdminApprovalDashboard() : renderScorekeeperDashboard()}
       </main>
     `;
   }
@@ -1344,6 +1569,59 @@ app.addEventListener('click', (event) => {
     return;
   }
 
+  const approvalGroupSelector = event.target instanceof HTMLElement ? event.target.closest('[data-select-approval-group]') : null;
+  if (approvalGroupSelector) {
+    const groupName = approvalGroupSelector.getAttribute('data-select-approval-group');
+    if (groupName) {
+      selectedApprovalGroup = groupName;
+      renderApp();
+    }
+    return;
+  }
+
+  const approvalButton = event.target instanceof HTMLElement ? event.target.closest('[data-approve-group]') : null;
+  if (approvalButton) {
+    const groupName = approvalButton.getAttribute('data-approve-group');
+    if (groupName && hasGroupSubmittedAllHoles(groupName)) {
+      approvedGroups[groupName] = true;
+      selectedApprovalGroup = groupName;
+      saveScorekeeperState();
+      renderApp();
+    }
+    return;
+  }
+
+  const bulkApprovalButton = event.target instanceof HTMLElement ? event.target.closest('[data-approve-all-scores]') : null;
+  if (bulkApprovalButton) {
+    const allGroupsReady = scorekeeperGroupLabels.every(hasGroupSubmittedAllHoles);
+    if (allGroupsReady) {
+      scorekeeperGroupLabels.forEach((group) => {
+        approvedGroups[group] = true;
+      });
+      saveScorekeeperState();
+      renderApp();
+    }
+    return;
+  }
+
+  const seedAllScoresButton = event.target instanceof HTMLElement ? event.target.closest('[data-seed-all-group-scores]') : null;
+  if (seedAllScoresButton) {
+    seedAllGroupScoresForTesting();
+    return;
+  }
+
+  const resetStateButton = event.target instanceof HTMLElement ? event.target.closest('[data-reset-scorekeeper-state]') : null;
+  if (resetStateButton) {
+    resetScorekeeperState();
+    return;
+  }
+
+  const resetAllDataButton = event.target instanceof HTMLElement ? event.target.closest('[data-reset-all-mock-data]') : null;
+  if (resetAllDataButton) {
+    resetAllMockData();
+    return;
+  }
+
   const target = event.target instanceof HTMLElement ? event.target.closest('a[href]') : null;
   if (!target) {
     return;
@@ -1383,6 +1661,8 @@ app.addEventListener('submit', (event) => {
       scorekeeperScoringStage = 'scoring';
       currentScoringHoleIndex = 0;
       scorekeeperScoresByHole = {};
+      approvedGroups = {};
+      saveScorekeeperState();
     }
     renderApp();
     return;
