@@ -41,6 +41,19 @@ export class Course {
     return hole;
   }
 
+  getHoleForRoundNumber(number: number): Hole {
+    if (this.holes.length === 0) {
+      throw new Error('This course has no holes.');
+    }
+
+    if (number < 1) {
+      throw new Error('Hole numbers must be positive.');
+    }
+
+    const wrappedNumber = ((number - 1) % this.holes.length) + 1;
+    return this.getHoleByNumber(wrappedNumber);
+  }
+
   buildTournamentRound(): Hole[] {
     if (this.holes.length < 9) {
       throw new Error('A tournament round requires at least 9 holes.');

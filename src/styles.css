@@ -329,6 +329,17 @@ textarea {
   box-shadow: 0 8px 20px rgba(12, 18, 30, 0.22);
 }
 
+.menu-card.is-active {
+  border-color: rgba(125, 211, 252, 0.9);
+  background: linear-gradient(180deg, rgba(30, 64, 175, 0.22), rgba(15, 23, 42, 0.94));
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.4), 0 10px 18px rgba(12, 18, 30, 0.18);
+}
+
+.menu-card.is-active .menu-card-header {
+  background: rgba(96, 165, 250, 0.14);
+  border-color: rgba(125, 211, 252, 0.5);
+}
+
 .menu-card-header {
   display: inline-flex;
   flex-direction: column;
@@ -757,6 +768,284 @@ textarea {
   border: 1px solid rgba(96, 165, 250, 0.24);
   border-radius: 14px;
   padding: 14px 16px;
+}
+
+.group-assignment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.assignment-row {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(17, 24, 39, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.score-group-card {
+  min-height: 100%;
+}
+
+.score-group-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.score-group-label {
+  display: block;
+  color: #dff4ff;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.assignment-operator {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(147, 51, 234, 0.14);
+  border: 1px solid rgba(196, 181, 253, 0.32);
+  color: #e9d5ff;
+}
+
+.score-input-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 96px;
+}
+
+.score-input-box label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #dfeaf8;
+}
+
+.score-input-box input {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  background: rgba(15, 23, 42, 0.8);
+  color: #edf6ff;
+  padding: 8px 10px;
+  font-size: 1rem;
+}
+
+.score-team-detail {
+  display: grid;
+  gap: 10px;
+}
+
+.score-team-block {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(96, 165, 250, 0.14);
+}
+
+.score-team-block strong {
+  color: #e9f5ff;
+  font-size: 0.94rem;
+}
+
+.player-score-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.player-score-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+  border: none;
+  background: transparent;
+}
+
+.player-name-with-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.player-name-with-score > span:first-child {
+  color: #dfeaf8;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.score-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.score-indicator--positive {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.28);
+  color: #d9fbe7;
+}
+
+.score-indicator--negative {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.28);
+  color: #fecaca;
+}
+
+.score-indicator--even {
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #e2e8f0;
+}
+
+.plus-minus-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.plus-minus-button {
+  width: auto;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #edf6ff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  outline: none;
+  box-shadow: none;
+}
+
+.plus-minus-button:focus,
+.plus-minus-button:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border: none;
+}
+
+.score-output {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 2px 5px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #edf6ff;
+  font-weight: 700;
+  font-size: 0.73rem;
+  letter-spacing: 0.01em;
+}
+
+.scorecard-summary-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.96), rgba(8, 15, 29, 0.94));
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.06), 0 18px 26px rgba(2, 6, 23, 0.42);
+}
+
+.scorecard-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+  background: rgba(3, 7, 18, 0.88);
+}
+
+.scorecard-table th,
+.scorecard-table td {
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  text-align: center;
+  font-size: 0.74rem;
+}
+
+.scorecard-table thead th {
+  position: sticky;
+  top: 0;
+  background: rgba(15, 23, 42, 0.98);
+  color: #dfeaf8;
+}
+
+.scorecard-table tbody th {
+  text-align: left;
+  color: #edf6ff;
+  font-weight: 700;
+  min-width: 150px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(8, 15, 29, 0.9));
+  border-right: 1px solid rgba(148, 163, 184, 0.12);
+  padding-left: 12px;
+}
+
+.scorecard-cell,
+.scorecard-total {
+  font-weight: 700;
+  border-left: 1px solid rgba(148, 163, 184, 0.08);
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.scorecard-cell--even,
+.scorecard-total.scorecard-cell--even {
+  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.scorecard-cell--positive,
+.scorecard-total.scorecard-cell--positive {
+  color: #d9fbe7;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.scorecard-cell--negative,
+.scorecard-total.scorecard-cell--negative {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.score-team-block .mini-list {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.score-team-block .mini-list li {
+  margin: 0;
+  color: #d5eaff;
+  font-size: 0.82rem;
 }
 
 .group-card h3 {

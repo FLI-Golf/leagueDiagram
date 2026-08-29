@@ -39,6 +39,14 @@ describe('Course domain model', () => {
     expect(course.intermissionAfterHoleNumber).toBe(9);
   });
 
+  it('A course can resolve a hole number across an 18-hole round even when the course only contains 9 holes', () => {
+    const course = makeCourse();
+
+    expect(course.getHoleForRoundNumber(10).name).toBe('Opening Drive');
+    expect(course.getHoleForRoundNumber(11).name).toBe('Dogleg Bend');
+    expect(course.getHoleForRoundNumber(18).name).toBe('Final Fade');
+  });
+
   it('A hole can display sponsor advertisements and signage', () => {
     const hole = new Hole('h-1', 1, 'Opening Drive', 'A wide open start.', 'Blue basket setup');
     const sponsorA = new Sponsor('s-1', 'Hawkeye Gear', 'Premium discs and apparel', 'https://example.com/hawkeye.png');
