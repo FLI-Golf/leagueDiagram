@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildGroupScorecard } from './ScorecardSummary';
+import { buildGroupScorecard, convertDisplayedHoleValueToStoredScore, getDisplayedHoleValueForPlayer, normalizeScoreEditValue } from './ScorecardSummary';
 
 describe('ScorecardSummary', () => {
   it('builds a full group scorecard with running relative totals for each player', () => {
@@ -33,5 +33,31 @@ describe('ScorecardSummary', () => {
     expect(rows[1].displayTotal).toBe('+1');
     expect(rows[2].holeScores).toHaveLength(18);
     expect(rows[3].displayTotal).toBe('+2');
+  });
+
+  it('normalizes scorecard edit values before saving a corrected hole score', () => {
+    expect(normalizeScoreEditValue('E')).toBe('E');
+    expect(normalizeScoreEditValue('+4')).toBe('+4');
+    expect(normalizeScoreEditValue('-2')).toBe('-2');
+    expect(normalizeScoreEditValue('  +7  ')).toBe('+7');
+    expect(normalizeScoreEditValue('abc')).toBe('+3');
+  });
+
+  it('returns the displayed hole value for the selected hole instead of a stale previous value', () => {
+    const lineups = [{ teamName: 'Ace Makers', players: ['Simon Lizotte'] }];
+    const holeScoresByIndex: Record<number, Record<string, string>> = {
+      0: { 'Group A|Ace Makers|Simon Lizotte': '+4' },
+      1: { 'Group A|Ace Makers|Simon Lizotte': '+1' },
+    };
+
+    expect(getDisplayedHoleValueForPlayer('Group A', 'Ace Makers', 'Simon Lizotte', 1, lineups, holeScoresByIndex)).toBe('+1');
+    expect(getDisplayedHoleValueForPlayer('Group A', 'Ace Makers', 'Simon Lizotte', 2, lineups, holeScoresByIndex)).toBe('-2');
+  });
+
+  it('stores the actual score under the par-based display value when the admin edits a hole', () => {
+    expect(convertDisplayedHoleValueToStoredScore('E')).toBe('+3');
+    expect(convertDisplayedHoleValueToStoredScore('+1')).toBe('+4');
+    expect(convertDisplayedHoleValueToStoredScore('-2')).toBe('+1');
+    expect(convertDisplayedHoleValueToStoredScore('+5')).toBe('+8');
   });
 });

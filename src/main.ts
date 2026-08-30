@@ -1,9 +1,10 @@
 import '@picocss/pico/css/pico.min.css';
 import './styles.css';
 import { resolveAppRoute, getProPlayers, getTeamSummaries } from './application/AppRoutes';
-import { buildGroupScorecard } from './application/ScorecardSummary';
+import { buildGroupScorecard, convertDisplayedHoleValueToStoredScore, getDisplayedHoleValueForPlayer, normalizeScoreEditValue } from './application/ScorecardSummary';
 import { SeasonService } from './application/SeasonService';
 import { Group } from './domain/pipeline/Group';
+import { generateGroupScoreSeed } from './domain/pipeline/GroupSeed';
 import { UserProfile } from './domain/user/UserProfile';
 
 let seed = SeasonService.createRealisticLeagueSeed('league-demo', '');
@@ -40,6 +41,7 @@ let scorekeeperScoresByHole: Record<number, Record<string, string>> = {};
 let approvedGroups: Record<string, boolean> = {};
 let selectedApprovalGroup = scorekeeperGroupLabels[0] ?? '';
 let lastScoreDirection: 'next' | 'previous' = 'next';
+let pendingPlayerScoreReview: { groupName: string; playerName: string; teamName: string } | null = null;
 
 const SCOREKEEPER_STATE_STORAGE_KEY = 'league-demo-scorekeeper-state';
 const app = document.querySelector('#app');
@@ -100,29 +102,9 @@ const resetAllMockData = (): void => {
 };
 
 const seedAllGroupScoresForTesting = (): void => {
-  const defaultSeed = {
-    0: { '+1': '+1', '+2': '+2' },
-  };
-
   scorekeeperScoresByHole = {};
   approvedGroups = {};
-
-  scorekeeperGroupLabels.forEach((group) => {
-    const lineups = scorekeeperGroupLineups[group] ?? [];
-    const playerKeys = lineups.flatMap((lineup) => lineup.players.map((player) => `${group}|${lineup.teamName}|${player}`));
-
-    for (let holeIndex = 0; holeIndex < 18; holeIndex += 1) {
-      const holeScores: Record<string, string> = {};
-      const value = holeIndex % 3 === 0 ? '+1' : holeIndex % 3 === 1 ? 'E' : '+2';
-      playerKeys.forEach((playerKey) => {
-        holeScores[playerKey] = value;
-      });
-      scorekeeperScoresByHole[holeIndex] = {
-        ...(scorekeeperScoresByHole[holeIndex] ?? {}),
-        ...holeScores,
-      };
-    }
-  });
+  scorekeeperScoresByHole = generateGroupScoreSeed(scorekeeperGroupLabels, scorekeeperGroupLineups, 18);
 
   scorekeeperScoringStage = 'complete';
   currentScoringHoleIndex = 17;
@@ -519,6 +501,65 @@ const hasGroupSubmittedAllHoles = (group: string): boolean => {
   });
 };
 
+const renderPlayerScoreReviewMarkup = (groupName: string, playerName: string, teamName: string): string => {
+  const scorecard = buildGroupScorecard(groupName, scorekeeperGroupLineups[groupName] ?? [], scorekeeperScoresByHole);
+  const playerRow = scorecard.find((row) => row.player === playerName && row.teamName === teamName);
+
+  if (!playerRow) {
+    return `
+      <div class="role-access-note">No scorecard data is available for ${playerName}.</div>
+    `;
+  }
+
+  return `
+    <div class="review-player-summary" style="margin-bottom: 1rem;">
+      <p class="eyebrow">Review player card</p>
+      <h4 style="margin: 0.25rem 0 0.5rem;">${playerName}</h4>
+      <p class="role-access-note" style="margin: 0;">${groupName} · ${teamName}</p>
+    </div>
+    <div class="scorecard-summary-wrap scorecard-summary-wrap--compact">
+      <table class="scorecard-table scorecard-table--compact">
+        <thead>
+          <tr>
+            <th scope="col">Hole</th>
+            <th scope="col">Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${playerRow.holeScores
+            .map(
+              (entry) => `
+                <tr>
+                  <th scope="row">${entry.hole}</th>
+                  <td class="scorecard-cell ${entry.relativeToPar === 0 ? 'scorecard-cell--even' : entry.relativeToPar > 0 ? 'scorecard-cell--positive' : 'scorecard-cell--negative'}">${entry.displayValue}</td>
+                </tr>
+              `,
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="role-access-note" style="margin-top: 1rem;">Total: <strong>${playerRow.displayTotal}</strong></div>
+  `;
+};
+
+const openPlayerScoreReviewModal = (groupName: string, playerName: string, teamName: string): void => {
+  pendingPlayerScoreReview = { groupName, playerName, teamName };
+  const modal = document.querySelector('#score-review-modal') as HTMLDialogElement | null;
+  const content = modal?.querySelector('#score-review-content');
+  if (!modal || !content) {
+    return;
+  }
+
+  const title = modal.querySelector('#score-review-title');
+  if (title) {
+    title.textContent = `${playerName} — ${groupName}`;
+  }
+
+  content.innerHTML = renderPlayerScoreReviewMarkup(groupName, playerName, teamName);
+  modal.showModal();
+};
+
 const renderAdminApprovalDashboard = (): string => {
   const allGroupsSubmitted = scorekeeperGroupLabels.every(hasGroupSubmittedAllHoles);
 
@@ -529,7 +570,7 @@ const renderAdminApprovalDashboard = (): string => {
       ? buildGroupScorecard(group, scorekeeperGroupLineups[group] ?? [], scorekeeperScoresByHole)
           .map(
             (playerRow) => `
-              <tr>
+              <tr data-player-score-row data-group="${group}" data-player="${playerRow.player}" data-team="${playerRow.teamName}" tabindex="0" role="button" aria-label="Edit ${playerRow.player} scorecard">
                 <th scope="row">${playerRow.player}</th>
                 ${playerRow.holeScores
                   .map(
@@ -616,6 +657,60 @@ const renderAdminApprovalDashboard = (): string => {
         </div>
       ` : ''}
 
+      <dialog id="score-edit-modal" aria-labelledby="score-edit-title">
+        <form method="dialog" data-action="edit-player-score" class="panel" style="padding: 1.25rem; min-width: min(420px, 90vw);">
+          <div class="section-header-row">
+            <div>
+              <p class="eyebrow">Score fix</p>
+              <h3 id="score-edit-title">Score fix</h3>
+            </div>
+            <button type="button" class="secondary-button" data-close-score-edit="true">Close</button>
+          </div>
+          <div id="score-edit-player-meta" class="role-access-note" style="margin-bottom: 0.5rem;"></div>
+          <div id="score-edit-current-value" class="role-access-note" style="margin-bottom: 1rem;"></div>
+          <label>
+            <span>Hole number</span>
+            <div class="plus-minus-control" data-score-edit-hole>
+              <button type="button" class="plus-minus-button" data-action="decrement-hole-edit" aria-label="Previous hole">−</button>
+              <input type="number" name="scoreHole" min="1" max="18" value="1" />
+              <button type="button" class="plus-minus-button" data-action="increment-hole-edit" aria-label="Next hole">+</button>
+            </div>
+          </label>
+          <label>
+            <span>Hole score</span>
+            <div class="plus-minus-control" data-score-edit-value>
+              <button type="button" class="plus-minus-button" data-action="decrement-score-edit" aria-label="Decrease hole value">−</button>
+              <input type="text" name="scoreValue" value="E" placeholder="E, +2, -1" />
+              <button type="button" class="plus-minus-button" data-action="increment-score-edit" aria-label="Increase hole value">+</button>
+            </div>
+          </label>
+          <input type="hidden" name="scoreGroup" />
+          <input type="hidden" name="scorePlayer" />
+          <input type="hidden" name="scoreTeam" />
+          <div class="action-row" style="margin-top: 1rem;">
+            <button type="submit" class="primary-button">Save score</button>
+            <button type="button" class="secondary-button" data-close-score-edit="true">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="score-review-modal" aria-labelledby="score-review-title">
+        <div class="panel" style="padding: 1.25rem; min-width: min(460px, 90vw);">
+          <div class="section-header-row">
+            <div>
+              <p class="eyebrow">Confirm score</p>
+              <h3 id="score-review-title">Player score review</h3>
+            </div>
+            <button type="button" class="secondary-button" data-close-score-review="true">Close</button>
+          </div>
+          <div id="score-review-content"></div>
+          <div class="action-row" style="margin-top: 1rem;">
+            <button type="button" class="primary-button" data-confirm-score-review="true">Confirm score</button>
+            <button type="button" class="secondary-button" data-close-score-review="true">Back to edit</button>
+          </div>
+        </div>
+      </dialog>
+
       <div class="action-row" style="margin-top: 18px;">
         <button type="button" class="primary-button" data-seed-all-group-scores="true">Seed all group scores</button>
         <button type="button" class="primary-button" data-approve-all-scores="true" ${!allGroupsSubmitted ? 'disabled aria-disabled="true"' : ''}>Approve all scores</button>
@@ -624,6 +719,49 @@ const renderAdminApprovalDashboard = (): string => {
       </div>
     </section>
   `;
+};
+
+const refreshScoreEditModalFromSelection = (form: HTMLFormElement): void => {
+  const groupInput = form.querySelector('input[name="scoreGroup"]') as HTMLInputElement | null;
+  const playerInput = form.querySelector('input[name="scorePlayer"]') as HTMLInputElement | null;
+  const teamInput = form.querySelector('input[name="scoreTeam"]') as HTMLInputElement | null;
+  const holeInput = form.querySelector('input[name="scoreHole"]') as HTMLInputElement | null;
+  const valueInput = form.querySelector('input[name="scoreValue"]') as HTMLInputElement | null;
+  const currentValueText = document.querySelector('#score-edit-current-value');
+
+  if (!groupInput || !playerInput || !teamInput || !holeInput || !valueInput) {
+    return;
+  }
+
+  const groupName = groupInput.value;
+  const playerName = playerInput.value;
+  const teamName = teamInput.value;
+  const parsedHoleNumber = Number.parseInt(holeInput.value, 10);
+  const holeNumber = Number.isFinite(parsedHoleNumber) ? Math.min(Math.max(parsedHoleNumber, 1), 18) : 1;
+
+  if (!groupName || !playerName || !teamName) {
+    return;
+  }
+
+  if (!Number.isFinite(parsedHoleNumber)) {
+    holeInput.value = '1';
+  } else if (holeNumber !== parsedHoleNumber) {
+    holeInput.value = String(holeNumber);
+  }
+
+  const displayedValue = getDisplayedHoleValueForPlayer(
+    groupName,
+    teamName,
+    playerName,
+    holeNumber,
+    scorekeeperGroupLineups[groupName] ?? [],
+    scorekeeperScoresByHole,
+  );
+
+  valueInput.value = displayedValue;
+  if (currentValueText) {
+    currentValueText.textContent = `Hole ${holeNumber} was ${displayedValue}`;
+  }
 };
 
 const renderScorekeeperDashboard = (): string => {
@@ -1557,6 +1695,53 @@ app.addEventListener('click', (event) => {
     return;
   }
 
+  const scoreEditButton = event.target instanceof HTMLElement ? event.target.closest('[data-action="increment-score-edit"], [data-action="decrement-score-edit"]') : null;
+  if (scoreEditButton) {
+    const form = scoreEditButton.closest('form[data-action="edit-player-score"]');
+    if (!form) {
+      return;
+    }
+
+    const valueInput = form.querySelector('input[name="scoreValue"]') as HTMLInputElement | null;
+    const holeInput = form.querySelector('input[name="scoreHole"]') as HTMLInputElement | null;
+    if (!valueInput || !holeInput) {
+      return;
+    }
+
+    const currentValue = normalizeScoreEditValue(valueInput.value);
+    const numericValue = currentValue === 'E' ? 0 : Number.parseInt(currentValue, 10) || 0;
+    const nextNumericValue = numericValue + (scoreEditButton.getAttribute('data-action') === 'increment-score-edit' ? 1 : -1);
+    const nextValue = nextNumericValue === 0 ? 'E' : nextNumericValue > 0 ? `+${nextNumericValue}` : `${nextNumericValue}`;
+
+    valueInput.value = nextValue;
+
+    const currentValueText = document.querySelector('#score-edit-current-value');
+    const holeNumber = Number.parseInt(holeInput.value, 10) || 1;
+    if (currentValueText) {
+      currentValueText.textContent = `Hole ${holeNumber} was ${nextValue}`;
+    }
+    return;
+  }
+
+  const holeEditButton = event.target instanceof HTMLElement ? event.target.closest('[data-action="increment-hole-edit"], [data-action="decrement-hole-edit"]') : null;
+  if (holeEditButton) {
+    const form = holeEditButton.closest('form[data-action="edit-player-score"]');
+    if (!form) {
+      return;
+    }
+
+    const holeInput = form.querySelector('input[name="scoreHole"]') as HTMLInputElement | null;
+    if (!holeInput) {
+      return;
+    }
+
+    const currentHole = Number.parseInt(holeInput.value, 10) || 1;
+    const nextHole = Math.min(Math.max(currentHole + (holeEditButton.getAttribute('data-action') === 'increment-hole-edit' ? 1 : -1), 1), 18);
+    holeInput.value = String(nextHole);
+    refreshScoreEditModalFromSelection(form);
+    return;
+  }
+
   const scoreSubmitButton = event.target instanceof HTMLElement ? event.target.closest('[data-score-direction]') : null;
   if (scoreSubmitButton && scoreSubmitButton.closest('form[data-action="scorekeeper-scoring"]')) {
     const form = scoreSubmitButton.closest('form');
@@ -1566,6 +1751,77 @@ app.addEventListener('click', (event) => {
 
     lastScoreDirection = (scoreSubmitButton.getAttribute('data-score-direction') as 'next' | 'previous') || 'next';
     submitScorekeeperScoringForm(form, lastScoreDirection);
+    return;
+  }
+
+  const playerScoreRow = event.target instanceof HTMLElement ? event.target.closest('[data-player-score-row]') : null;
+  if (playerScoreRow) {
+    const modal = document.querySelector('#score-edit-modal') as HTMLDialogElement | null;
+    const groupName = playerScoreRow.getAttribute('data-group');
+    const playerName = playerScoreRow.getAttribute('data-player');
+    const teamName = playerScoreRow.getAttribute('data-team');
+
+    if (modal && groupName && playerName && teamName) {
+      const meta = document.querySelector('#score-edit-player-meta');
+      const currentValue = document.querySelector('#score-edit-current-value');
+      if (meta) {
+        meta.textContent = `${groupName} · ${teamName} · ${playerName}`;
+      }
+
+      const form = modal.querySelector('form[data-action="edit-player-score"]') as HTMLFormElement | null;
+      if (form) {
+        const holeInput = form.querySelector('input[name="scoreHole"]') as HTMLInputElement | null;
+        const groupInput = form.querySelector('input[name="scoreGroup"]') as HTMLInputElement | null;
+        const playerInput = form.querySelector('input[name="scorePlayer"]') as HTMLInputElement | null;
+        const teamInput = form.querySelector('input[name="scoreTeam"]') as HTMLInputElement | null;
+
+        if (holeInput) {
+          holeInput.value = '1';
+        }
+        if (groupInput) {
+          groupInput.value = groupName;
+        }
+        if (playerInput) {
+          playerInput.value = playerName;
+        }
+        if (teamInput) {
+          teamInput.value = teamName;
+        }
+        refreshScoreEditModalFromSelection(form);
+      }
+
+      modal.showModal();
+    }
+    return;
+  }
+
+  const closeScoreEdit = event.target instanceof HTMLElement ? event.target.closest('[data-close-score-edit]') : null;
+  if (closeScoreEdit) {
+    const modal = document.querySelector('#score-edit-modal') as HTMLDialogElement | null;
+    if (modal) {
+      modal.close();
+    }
+    return;
+  }
+
+  const closeScoreReview = event.target instanceof HTMLElement ? event.target.closest('[data-close-score-review]') : null;
+  if (closeScoreReview) {
+    const modal = document.querySelector('#score-review-modal') as HTMLDialogElement | null;
+    if (modal) {
+      modal.close();
+    }
+    pendingPlayerScoreReview = null;
+    return;
+  }
+
+  const confirmScoreReview = event.target instanceof HTMLElement ? event.target.closest('[data-confirm-score-review]') : null;
+  if (confirmScoreReview) {
+    const modal = document.querySelector('#score-review-modal') as HTMLDialogElement | null;
+    if (modal) {
+      modal.close();
+    }
+    pendingPlayerScoreReview = null;
+    renderApp();
     return;
   }
 
@@ -1619,6 +1875,15 @@ app.addEventListener('click', (event) => {
   const resetAllDataButton = event.target instanceof HTMLElement ? event.target.closest('[data-reset-all-mock-data]') : null;
   if (resetAllDataButton) {
     resetAllMockData();
+    return;
+  }
+
+  const scoreHoleInput = event.target instanceof HTMLInputElement && event.target.name === 'scoreHole' && event.target.closest('form[data-action="edit-player-score"]') ? event.target : null;
+  if (scoreHoleInput) {
+    const form = scoreHoleInput.closest('form');
+    if (form) {
+      refreshScoreEditModalFromSelection(form);
+    }
     return;
   }
 
@@ -1722,6 +1987,33 @@ app.addEventListener('submit', (event) => {
     addFanPost(profileId, content.value);
     content.value = '';
     renderApp();
+    return;
+  }
+
+  if (action === 'edit-player-score') {
+    const groupName = form.querySelector('input[name="scoreGroup"]') as HTMLInputElement | null;
+    const playerName = form.querySelector('input[name="scorePlayer"]') as HTMLInputElement | null;
+    const teamName = form.querySelector('input[name="scoreTeam"]') as HTMLInputElement | null;
+    const holeInput = form.querySelector('input[name="scoreHole"]') as HTMLInputElement | null;
+    const valueInput = form.querySelector('input[name="scoreValue"]') as HTMLInputElement | null;
+
+    if (!groupName || !playerName || !teamName || !holeInput || !valueInput) {
+      return;
+    }
+
+    const holeNumber = Number.parseInt(holeInput.value, 10);
+    const playerKey = `${groupName.value}|${teamName.value}|${playerName.value}`;
+    const storedValue = convertDisplayedHoleValueToStoredScore(valueInput.value);
+
+    if (Number.isInteger(holeNumber) && holeNumber >= 1 && holeNumber <= 18) {
+      if (!scorekeeperScoresByHole[holeNumber - 1]) {
+        scorekeeperScoresByHole[holeNumber - 1] = {};
+      }
+      scorekeeperScoresByHole[holeNumber - 1][playerKey] = storedValue;
+      saveScorekeeperState();
+      renderApp();
+      openPlayerScoreReviewModal(groupName.value, playerName.value, teamName.value);
+    }
   }
 });
 

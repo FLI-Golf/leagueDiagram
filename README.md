@@ -1,6 +1,6 @@
-# LeagueDiogram
+# LeagueDiagram
 
-LeagueDiogram is a working prototype and architectural blueprint for a sports league management and fantasy platform. The goal is to demonstrate how a team can build this system using object-oriented design, clear domain models, and route-driven UI flows without starting from scratch.
+LeagueDiagram is a working prototype and architectural blueprint for a sports league management and fantasy platform. The goal is to demonstrate how a team can build this system using object-oriented design, clear domain models, and route-driven UI flows without starting from scratch.
 
 This project is intentionally lightweight and front-end focused. It is designed to show the structure, relationships, and behaviors that a future engineering team would use to turn the concept into a production product.
 

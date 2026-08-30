@@ -5,6 +5,7 @@ import { Player } from '../player/Player';
 import { Group } from './Group';
 import { ScoreEntry } from './ScoreEntry';
 import { ScorekeeperPipeline } from './ScorekeeperPipeline';
+import { generateGroupScoreSeed } from './GroupSeed';
 
 describe('Scorekeeper pipeline', () => {
   it('A group can contain paired mixed-gender teams and track scores per hole', () => {
@@ -45,6 +46,21 @@ describe('Scorekeeper pipeline', () => {
 
     expect(pipeline.isReadyForApproval()).toBe(true);
     expect(() => pipeline.approve()).not.toThrow();
+  });
+
+  it('Generates more varied seeded group scores instead of repeating the same tie pattern', () => {
+    const groups = ['Group A', 'Group B'];
+    const lineupsByGroup = {
+      'Group A': [{ teamName: 'Blue Birds', players: ['Ava', 'Milo'] }],
+      'Group B': [{ teamName: 'Sunset', players: ['Rin', 'Theo'] }],
+    };
+
+    const seededScores = generateGroupScoreSeed(groups, lineupsByGroup, 3);
+
+    expect(Object.keys(seededScores)).toHaveLength(3);
+    expect(new Set(Object.values(seededScores[0])).size).toBeGreaterThan(1);
+    expect(new Set(Object.values(seededScores[1])).size).toBeGreaterThan(1);
+    expect(seededScores[0]['Group A|Blue Birds|Ava']).not.toBe(seededScores[0]['Group B|Sunset|Rin']);
   });
 
   it('Generates competitive pairings by balancing strengths across the field', () => {

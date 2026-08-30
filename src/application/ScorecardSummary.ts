@@ -25,6 +25,56 @@ const parseRelativeToPar = (rawValue: string | undefined): number => {
   return 0;
 };
 
+export const normalizeScoreEditValue = (rawValue: string | null | undefined): string => {
+  const sanitized = String(rawValue ?? '+3').trim();
+
+  if (!sanitized || sanitized === 'E') {
+    return 'E';
+  }
+
+  if (/^[-+]?\d+$/.test(sanitized)) {
+    return sanitized.startsWith('+') || sanitized.startsWith('-') ? sanitized : `+${sanitized}`;
+  }
+
+  return '+3';
+};
+
+export const convertDisplayedHoleValueToStoredScore = (rawValue: string | null | undefined): string => {
+  const normalized = normalizeScoreEditValue(rawValue);
+  if (normalized === 'E') {
+    return '+3';
+  }
+
+  const relativeValue = Number.parseInt(normalized, 10);
+  const storedValue = 3 + relativeValue;
+  return storedValue >= 0 ? `+${storedValue}` : `${storedValue}`;
+};
+
+export const getDisplayedHoleValueForPlayer = (
+  groupName: string,
+  teamName: string,
+  playerName: string,
+  holeNumber: number,
+  lineups: readonly GroupScorecardLineup[],
+  holeScoresByIndex: Record<number, Record<string, string>>,
+): string => {
+  const safeHoleNumber = Math.min(Math.max(holeNumber, 1), 18);
+  const playerRow = buildGroupScorecard(groupName, lineups, holeScoresByIndex).find(
+    (row) => row.player === playerName && row.teamName === teamName,
+  );
+
+  if (!playerRow) {
+    return 'E';
+  }
+
+  const safeEntry = playerRow.holeScores[safeHoleNumber - 1];
+  if (!safeEntry) {
+    return 'E';
+  }
+
+  return safeEntry.displayValue;
+};
+
 export const buildGroupScorecard = (
   groupName: string,
   lineups: readonly GroupScorecardLineup[],
