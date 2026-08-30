@@ -101,4 +101,13 @@ describe('Season service facade', () => {
     expect(payoutBreakdown.events[0].placements[0].amount).toBe(96_000);
     expect(payoutBreakdown.events[5].placements[0].amount).toBe(268_800);
   });
+
+  it('keeps payout amounts descending by finish position', () => {
+    const payoutBreakdown = SeasonService.createProgressivePayoutBreakdown();
+    const placements = payoutBreakdown.events[0].placements;
+
+    for (let index = 1; index < placements.length; index += 1) {
+      expect(placements[index - 1].amount).toBeGreaterThan(placements[index].amount);
+    }
+  });
 });

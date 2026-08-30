@@ -1,6 +1,7 @@
 import '@picocss/pico/css/pico.min.css';
 import './styles.css';
 import { resolveAppRoute, getProPlayers, getTeamSummaries } from './application/AppRoutes';
+import { areAllGroupsApproved, normalizeFinishOrder, sortTeamsByScore } from './application/FinishOrder';
 import { buildGroupScorecard, convertDisplayedHoleValueToStoredScore, getDisplayedHoleValueForPlayer, normalizeScoreEditValue } from './application/ScorecardSummary';
 import { SeasonService } from './application/SeasonService';
 import { Group } from './domain/pipeline/Group';
@@ -22,23 +23,34 @@ const defaultScorekeeperAssignments: Record<string, string> = {
   'Group E': 'Noah Chen',
   'Group F': 'Jamie Lopez',
 };
-const scorekeeperGroupLineups: Record<string, Array<{ teamName: string; players: string[] }>> = Object.fromEntries(
-  scorekeeperGroupLabels.map((groupName, groupIndex) => {
-    const teams = seed.realLeagueTeams.slice(groupIndex * 2, groupIndex * 2 + 2);
-    return [
-      groupName,
-      teams.map((team) => ({
-        teamName: team.name,
-        players: team.players.map((player) => player.displayName),
-      })),
-    ];
-  }),
-);
+const scorekeeperGroupLineups: Record<string, Array<{ teamName: string; players: string[] }>> = {};
+
+const syncScorekeeperGroupLineupsForSelectedTournament = (): void => {
+  const tournamentEntries = seed.schedule.getEvents();
+  const activeTournamentIndex = Math.min(Math.max(selectedTournamentIndex, 0), Math.max(tournamentEntries.length - 1, 0));
+  const eventGroups = Group.generateSeasonPairings(seed.realLeagueTeams, tournamentEntries.length)[activeTournamentIndex] ?? [];
+
+  for (const groupName of scorekeeperGroupLabels) {
+    delete scorekeeperGroupLineups[groupName];
+  }
+
+  scorekeeperGroupLabels.forEach((groupName, index) => {
+    const groupsForThisEvent = eventGroups[index]?.teams ?? [];
+    scorekeeperGroupLineups[groupName] = groupsForThisEvent.map((team) => ({
+      teamName: team.name,
+      players: team.players.map((player) => player.displayName),
+    }));
+  });
+};
+
 let scorekeeperAssignments: Record<string, string> = { ...defaultScorekeeperAssignments };
 let scorekeeperScoringStage: 'assignment' | 'scoring' | 'complete' = 'assignment';
 let currentScoringHoleIndex = 0;
 let scorekeeperScoresByHole: Record<number, Record<string, string>> = {};
 let approvedGroups: Record<string, boolean> = {};
+let finishOrder: string[] = [...scorekeeperGroupLabels];
+let teamPlayoffDistances: Record<string, number> = {};
+let teamFinishOrderConfirmed = false;
 let selectedApprovalGroup = scorekeeperGroupLabels[0] ?? '';
 let lastScoreDirection: 'next' | 'previous' = 'next';
 let pendingPlayerScoreReview: { groupName: string; playerName: string; teamName: string } | null = null;
@@ -58,6 +70,9 @@ const getStoredScorekeeperState = (): Partial<{
   currentScoringHoleIndex: number;
   scoresByHole: Record<number, Record<string, string>>;
   approvedGroups: Record<string, boolean>;
+  finishOrder: string[];
+  teamPlayoffDistances: Record<string, number>;
+  teamFinishOrderConfirmed: boolean;
 }> => {
   try {
     const raw = window.localStorage.getItem(SCOREKEEPER_STATE_STORAGE_KEY);
@@ -77,6 +92,9 @@ const saveScorekeeperState = (): void => {
         currentScoringHoleIndex,
         scoresByHole: scorekeeperScoresByHole,
         approvedGroups,
+        finishOrder,
+        teamPlayoffDistances,
+        teamFinishOrderConfirmed,
       }),
     );
   } catch {
@@ -90,6 +108,9 @@ const resetScorekeeperState = (): void => {
   currentScoringHoleIndex = 0;
   scorekeeperScoresByHole = {};
   approvedGroups = {};
+  finishOrder = [...scorekeeperGroupLabels];
+  teamPlayoffDistances = {};
+  teamFinishOrderConfirmed = false;
   window.localStorage.removeItem(SCOREKEEPER_STATE_STORAGE_KEY);
   renderApp();
 };
@@ -128,6 +149,16 @@ if (persistedScorekeeperState.scoresByHole) {
 if (persistedScorekeeperState.approvedGroups) {
   approvedGroups = persistedScorekeeperState.approvedGroups;
 }
+if (Array.isArray(persistedScorekeeperState.finishOrder) && persistedScorekeeperState.finishOrder.length) {
+  finishOrder = normalizeFinishOrder(scorekeeperGroupLabels, persistedScorekeeperState.finishOrder);
+}
+if (persistedScorekeeperState.teamPlayoffDistances) {
+  teamPlayoffDistances = persistedScorekeeperState.teamPlayoffDistances;
+}
+if (typeof persistedScorekeeperState.teamFinishOrderConfirmed === 'boolean') {
+  teamFinishOrderConfirmed = persistedScorekeeperState.teamFinishOrderConfirmed;
+}
+syncScorekeeperGroupLineupsForSelectedTournament();
 
 const proProfiles = [
   new UserProfile('simon-lizotte', 'Simon Lizotte', 'simon@fli.example.com', ['pro', 'fantasyParticipant', 'viewer'], 'Disc golf pro and content creator'),
@@ -560,8 +591,91 @@ const openPlayerScoreReviewModal = (groupName: string, playerName: string, teamN
   modal.showModal();
 };
 
+const getTeamPlayoffDistance = (teamName: string): number => {
+  if (Number.isFinite(teamPlayoffDistances[teamName])) {
+    return teamPlayoffDistances[teamName];
+  }
+
+  return Number.POSITIVE_INFINITY;
+};
+
+const getTeamFinishEntries = (): Array<{ teamName: string; score: number; playoffDistance: number }> => {
+  let tieBreakIndex = 0;
+  const teamsWithScores = normalizeFinishOrder(scorekeeperGroupLabels, finishOrder)
+    .flatMap((groupName) =>
+      (scorekeeperGroupLineups[groupName] ?? []).map((entry) => {
+        const team = {
+          teamName: entry.teamName,
+          score: getTeamScoreLabelValue(entry.teamName),
+          playoffDistance: getTeamPlayoffDistance(entry.teamName),
+          tieBreakIndex: tieBreakIndex++,
+        };
+        return team;
+      }),
+    )
+    .filter((entry) => Number.isFinite(entry.score));
+
+  return sortTeamsByScore(teamsWithScores).map((entry) => ({
+    teamName: entry.teamName,
+    score: entry.score,
+    playoffDistance: entry.playoffDistance,
+  }));
+};
+
+const getOrderedTeamFinishList = (): string[] => {
+  return getTeamFinishEntries().map((entry) => entry.teamName);
+};
+
+const getTeamScoreLabelValue = (teamName: string): number => {
+  for (const groupName of scorekeeperGroupLabels) {
+    const groupCard = buildGroupScorecard(groupName, scorekeeperGroupLineups[groupName] ?? [], scorekeeperScoresByHole);
+    const teamPlayers = groupCard.filter((playerRow) => playerRow.teamName === teamName);
+    if (teamPlayers.length > 0) {
+      return teamPlayers.reduce((sum, playerRow) => sum + playerRow.totalRelativeToPar, 0);
+    }
+  }
+
+  return Number.POSITIVE_INFINITY;
+};
+
+const getTeamScoreLabel = (teamName: string): string => {
+  const teamTotal = getTeamScoreLabelValue(teamName);
+  if (!Number.isFinite(teamTotal)) {
+    return 'E';
+  }
+
+  return teamTotal === 0 ? 'E' : `${teamTotal > 0 ? '+' : ''}${teamTotal}`;
+};
+
+const getTeamPayoutAmount = (finishPosition: number): number => {
+  const payoutBreakdown = seed.payoutBreakdown ?? SeasonService.createProgressivePayoutBreakdown();
+  const placement = payoutBreakdown.events[0]?.placements[Math.max(0, finishPosition - 1)];
+  return placement?.amount ?? 0;
+};
+
+const getTeamFinishDisplayLabel = (teamName: string, options?: { finishPosition?: number; includePlacementPayout?: boolean }): string => {
+  const scoreLabel = getTeamScoreLabel(teamName);
+  const playoffDistance = getTeamPlayoffDistance(teamName);
+  const baseText = `${teamName} — ${scoreLabel}`;
+  const distanceText = Number.isFinite(playoffDistance) && playoffDistance !== Number.POSITIVE_INFINITY ? ` --- ${playoffDistance}` : '';
+  const finishPosition = options?.finishPosition;
+  const includePlacementPayout = options?.includePlacementPayout ?? false;
+  const placementText = includePlacementPayout && typeof finishPosition === 'number' ? ` --- ${finishPosition}` : '';
+  const payoutText = includePlacementPayout && typeof finishPosition === 'number' ? ` --- $${getTeamPayoutAmount(finishPosition).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+  return `${baseText}${distanceText}${placementText}${payoutText}`;
+};
+
 const renderAdminApprovalDashboard = (): string => {
   const allGroupsSubmitted = scorekeeperGroupLabels.every(hasGroupSubmittedAllHoles);
+  const allGroupsApproved = areAllGroupsApproved(scorekeeperGroupLabels, approvedGroups);
+  const visibleFinishOrder = normalizeFinishOrder(scorekeeperGroupLabels, finishOrder);
+  const visibleTeamFinishOrder = getOrderedTeamFinishList();
+  const payoutBreakdown = seed.payoutBreakdown ?? SeasonService.createProgressivePayoutBreakdown();
+  const totalPaidOutAmount = payoutBreakdown.events.at(-1)?.eventTotal ?? payoutBreakdown.totalPurse;
+
+  const tournamentEntries = seed.schedule.getEvents();
+  const activeTournamentIndex = Math.min(Math.max(selectedTournamentIndex, 0), tournamentEntries.length - 1);
+  const activeTournament = tournamentEntries[activeTournamentIndex] ?? tournamentEntries[0];
 
   const pendingApprovalGroups = scorekeeperGroupLabels.map((group) => {
     const isReady = hasGroupSubmittedAllHoles(group);
@@ -584,6 +698,8 @@ const renderAdminApprovalDashboard = (): string => {
           .join('')
       : '';
 
+    const teamNames = (scorekeeperGroupLineups[group] ?? []).map((entry) => entry.teamName);
+
     return {
       group,
       scorekeeper: scorekeeperAssignments[group] ?? 'Unassigned',
@@ -591,6 +707,7 @@ const renderAdminApprovalDashboard = (): string => {
       isReady,
       isApproved,
       scorePreviewRows,
+      teamNames,
     };
   });
 
@@ -635,8 +752,15 @@ const renderAdminApprovalDashboard = (): string => {
       ${activeGroup ? `
         <div class="group-card" style="margin-top: 18px;">
           <h3>${activeGroup.group}</h3>
+          <p class="role-access-note">${activeTournament?.result?.name ?? 'Tournament'} · ${activeTournament?.date ?? ''}</p>
           <p class="role-access-note">${activeGroup.scorekeeper}</p>
           <div class="payout-meta">${activeGroup.status}</div>
+          <div style="margin-top: 0.75rem;">
+            <p class="role-access-note">Teams in this group</p>
+            <ul class="list-block" style="margin-top: 0.5rem; padding-left: 1rem;">
+              ${activeGroup.teamNames.map((teamName) => `<li>${teamName}</li>`).join('')}
+            </ul>
+          </div>
           ${activeGroup.isReady ? `
             <div class="scorecard-summary-wrap scorecard-summary-wrap--compact">
               <table class="scorecard-table scorecard-table--compact">
@@ -654,6 +778,68 @@ const renderAdminApprovalDashboard = (): string => {
             </div>
           ` : '<div class="payout-meta">No submitted card yet.</div>'}
           <button type="button" class="secondary-button" data-approve-group="${activeGroup.group}" ${!activeGroup.isReady || activeGroup.isApproved ? 'disabled aria-disabled="true"' : ''}>${activeGroup.isApproved ? 'Approved' : 'Approve scores'}</button>
+        </div>
+      ` : ''}
+
+      ${allGroupsApproved ? `
+        <div class="group-card" style="margin-top: 18px;">
+          <div style="margin-top: 1rem;">
+            <p class="role-access-note">Team finish order</p>
+            <div style="margin-top: 0.75rem;">
+              ${(() => {
+                const topTiedScores = getTeamFinishEntries().reduce((best, entry) => {
+                  const score = entry.score;
+                  if (!best.length) {
+                    return [score];
+                  }
+                  if (score === best[0]) {
+                    best.push(score);
+                  }
+                  return best;
+                }, [] as number[]);
+                const topTiedTeams = getTeamFinishEntries().filter((entry) => topTiedScores.includes(entry.score) && entry.score === Math.min(...topTiedScores));
+
+                const shouldShowPlayoffInputs = !teamFinishOrderConfirmed && topTiedTeams.length > 1;
+
+                return shouldShowPlayoffInputs
+                  ? `
+                    <div style="display: grid; gap: 0.75rem; margin-bottom: 0.75rem;">
+                      ${topTiedTeams
+                        .map(
+                          (entry) => `
+                            <label style="display: inline-flex; align-items: center; justify-content: space-between; gap: 0.75rem; font-size: 0.9rem; color: white;">
+                              <span style="color: white;">${entry.teamName} — ${getTeamScoreLabel(entry.teamName)}${Number.isFinite(entry.playoffDistance) && entry.playoffDistance !== Number.POSITIVE_INFINITY ? ` --- ${entry.playoffDistance}` : ''}</span>
+                              <input type="number" min="0" step="1" data-playoff-distance-team="${entry.teamName}" value="${Number.isFinite(entry.playoffDistance) ? entry.playoffDistance : 0}" style="width: 110px; color: white; background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.2);" />
+                            </label>
+                          `,
+                        )
+                        .join('')}
+                    </div>
+                    <button type="button" class="primary-button" data-submit-playoff-winner="true">Submit playoff winner</button>
+                  `
+                  : teamFinishOrderConfirmed
+                    ? '<div class="payout-meta" style="margin-bottom: 0.75rem;">Final order confirmed.</div>'
+                    : '';
+              })()}
+            </div>
+            <ol class="standings-list" style="padding-left: 1.25rem; margin-top: 0.5rem;">
+              ${visibleTeamFinishOrder
+                .map(
+                  (teamName, index) => `
+                    <li style="margin-bottom: 0.35rem;">${getTeamFinishDisplayLabel(teamName, { finishPosition: index + 1, includePlacementPayout: teamFinishOrderConfirmed })}</li>
+                  `,
+                )
+                .join('')}
+            </ol>
+            ${!teamFinishOrderConfirmed
+              ? '<button type="button" class="primary-button" style="margin-top: 0.75rem;" data-confirm-team-finish-order="true">Confirm order</button>'
+              : `
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 0.75rem; flex-wrap: wrap;">
+                  <div class="payout-meta">Order confirmed</div>
+                  <div class="payout-meta" style="font-weight: 600; color: white;">Total paid out: $${totalPaidOutAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                </div>
+              `}
+          </div>
         </div>
       ` : ''}
 
@@ -769,6 +955,30 @@ const renderScorekeeperDashboard = (): string => {
   const assignedCount = Object.values(scorekeeperAssignments).filter(Boolean).length;
   const pendingAssignments = scorekeeperGroupLabels.filter((group) => !scorekeeperAssignments[group]);
   const totalHoles = 18;
+  const teamFinishOrder = getOrderedTeamFinishList();
+
+  if (selectedDashboardFilter === 'Standings') {
+    return `
+      <section class="panel">
+        <div class="section-header-row">
+          <div>
+            <p class="eyebrow">Standings</p>
+            <h2>Order of finish</h2>
+          </div>
+          <span class="tee-time-badge">Teams</span>
+        </div>
+        <ol class="standings-list" style="padding-left: 1.5rem; margin-top: 0.75rem;">
+          ${teamFinishOrder
+            .map(
+              (teamName, index) => `
+                <li style="margin-bottom: 0.5rem;">${getTeamFinishDisplayLabel(teamName, { finishPosition: index + 1, includePlacementPayout: teamFinishOrderConfirmed })}</li>
+              `,
+            )
+            .join('')}
+        </ol>
+      </section>
+    `;
+  }
   const currentHoleNumber = currentScoringHoleIndex + 1;
   const isFinalHole = currentHoleNumber >= totalHoles;
   const selectedCourse = getSelectedCourse();
@@ -1608,6 +1818,22 @@ const renderApp = (): void => {
   app.innerHTML = renderHomePage();
 };
 
+app.addEventListener('input', (event) => {
+  const playoffDistanceInput = event.target instanceof HTMLInputElement && event.target.matches('[data-playoff-distance-team]') ? event.target : null;
+  if (playoffDistanceInput) {
+    const teamName = playoffDistanceInput.getAttribute('data-playoff-distance-team');
+    if (teamName) {
+      const value = Number.parseFloat(playoffDistanceInput.value);
+      if (Number.isFinite(value)) {
+        teamPlayoffDistances[teamName] = value;
+      } else {
+        delete teamPlayoffDistances[teamName];
+      }
+      saveScorekeeperState();
+    }
+  }
+});
+
 app.addEventListener('click', (event) => {
   const toggle = event.target instanceof HTMLElement ? event.target.closest('[data-toggle="collapse"]') : null;
   if (toggle) {
@@ -1647,6 +1873,7 @@ app.addEventListener('click', (event) => {
     const nextIndex = Number(scheduleChoice.getAttribute('data-event-index'));
     if (!Number.isNaN(nextIndex)) {
       selectedTournamentIndex = nextIndex;
+      syncScorekeeperGroupLineupsForSelectedTournament();
       renderApp();
     }
     return;
@@ -1854,8 +2081,113 @@ app.addEventListener('click', (event) => {
       scorekeeperGroupLabels.forEach((group) => {
         approvedGroups[group] = true;
       });
+      finishOrder = normalizeFinishOrder(scorekeeperGroupLabels, finishOrder);
       saveScorekeeperState();
       renderApp();
+    }
+    return;
+  }
+
+  const setFinishOrderButton = event.target instanceof HTMLElement ? event.target.closest('[data-set-order-of-finish]') : null;
+  if (setFinishOrderButton) {
+    finishOrder = normalizeFinishOrder(scorekeeperGroupLabels, finishOrder);
+    saveScorekeeperState();
+    renderApp();
+    return;
+  }
+
+  const submitPlayoffWinnerButton = event.target instanceof HTMLElement ? event.target.closest('[data-submit-playoff-winner]') : null;
+  if (submitPlayoffWinnerButton) {
+    document.querySelectorAll<HTMLInputElement>('[data-playoff-distance-team]').forEach((input) => {
+      const teamName = input.getAttribute('data-playoff-distance-team');
+      if (!teamName) {
+        return;
+      }
+      const value = Number.parseFloat(input.value);
+      if (Number.isFinite(value)) {
+        teamPlayoffDistances[teamName] = value;
+      } else {
+        delete teamPlayoffDistances[teamName];
+      }
+    });
+    saveScorekeeperState();
+
+    const tiedTeams = getTeamFinishEntries().reduce((list, entry) => {
+      const score = entry.score;
+      const firstValue = list[0]?.score;
+      if (!firstValue) {
+        list.push(entry);
+        return list;
+      }
+      if (score === firstValue) {
+        list.push(entry);
+      }
+      return list;
+    }, [] as Array<{ teamName: string; score: number; playoffDistance: number }>);
+
+    const winner = tiedTeams.reduce((best, current) => {
+      const bestDistance = getTeamPlayoffDistance(best.teamName);
+      const currentDistance = getTeamPlayoffDistance(current.teamName);
+      return currentDistance < bestDistance ? current : best;
+    }, tiedTeams[0]);
+
+    if (winner) {
+      const allTeams = getTeamFinishEntries();
+      const winnerSet = new Set([winner.teamName]);
+      const reordered = [...allTeams].sort((left, right) => {
+        if (winnerSet.has(left.teamName)) {
+          return -1;
+        }
+        if (winnerSet.has(right.teamName)) {
+          return 1;
+        }
+        return left.score - right.score || (getTeamPlayoffDistance(left.teamName) - getTeamPlayoffDistance(right.teamName));
+      });
+      finishOrder = reordered.map((entry) => entry.teamName);
+      teamFinishOrderConfirmed = false;
+      saveScorekeeperState();
+      renderApp();
+    }
+    return;
+  }
+
+  const confirmTeamFinishOrderButton = event.target instanceof HTMLElement ? event.target.closest('[data-confirm-team-finish-order]') : null;
+  if (confirmTeamFinishOrderButton) {
+    teamFinishOrderConfirmed = true;
+    saveScorekeeperState();
+    renderApp();
+    return;
+  }
+
+  const playoffDistanceInput = event.target instanceof HTMLInputElement && event.target.matches('[data-playoff-distance-team]') ? event.target : null;
+  if (playoffDistanceInput) {
+    const teamName = playoffDistanceInput.getAttribute('data-playoff-distance-team');
+    if (teamName) {
+      const value = Number.parseFloat(playoffDistanceInput.value);
+      if (Number.isFinite(value)) {
+        teamPlayoffDistances[teamName] = value;
+      } else {
+        delete teamPlayoffDistances[teamName];
+      }
+      saveScorekeeperState();
+    }
+    return;
+  }
+
+  const moveFinishOrderButton = event.target instanceof HTMLElement ? event.target.closest('[data-move-finish-order]') : null;
+  if (moveFinishOrderButton) {
+    const groupName = moveFinishOrderButton.getAttribute('data-move-finish-order');
+    const direction = moveFinishOrderButton.getAttribute('data-finish-direction');
+    if (groupName && (direction === 'up' || direction === 'down')) {
+      const nextOrder = [...finishOrder];
+      const index = nextOrder.findIndex((entry) => entry === groupName);
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (index >= 0 && targetIndex >= 0 && targetIndex < nextOrder.length) {
+        [nextOrder[index], nextOrder[targetIndex]] = [nextOrder[targetIndex], nextOrder[index]];
+        finishOrder = normalizeFinishOrder(scorekeeperGroupLabels, nextOrder);
+        saveScorekeeperState();
+        renderApp();
+      }
     }
     return;
   }

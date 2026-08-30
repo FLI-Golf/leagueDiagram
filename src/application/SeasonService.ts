@@ -97,7 +97,7 @@ export class SeasonService {
     const eventTotals = [400_000, 480_000, 560_000, 720_000, 720_000, 1_120_000];
     const eventDates = ['2026-09-01', '2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10'];
     const eventNames = ['September Open', 'Blackwood Clash', 'Ridge Rumble', 'Autumn Classic', 'Pine Valley Showdown', 'Championship Weekend'];
-    const weights = [0.24, 0.2, 0.16, 0.12, 0.08, 0.06, 0.04, 0.03, 0.02, 0.02, 0.01, 0.02];
+    const weights = [0.24, 0.2, 0.16, 0.12, 0.08, 0.06, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005];
 
     const events = eventNames.map((name, index) => {
       const eventTotal = eventTotals[index];
