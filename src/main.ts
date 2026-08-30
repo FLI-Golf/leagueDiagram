@@ -647,21 +647,21 @@ const getTeamScoreLabel = (teamName: string): string => {
   return teamTotal === 0 ? 'E' : `${teamTotal > 0 ? '+' : ''}${teamTotal}`;
 };
 
-const getTeamPayoutAmount = (finishPosition: number): number => {
+const getTeamPayoutAmount = (finishPosition: number, eventIndex = selectedTournamentIndex): number => {
   const payoutBreakdown = seed.payoutBreakdown ?? SeasonService.createProgressivePayoutBreakdown();
-  const placement = payoutBreakdown.events[0]?.placements[Math.max(0, finishPosition - 1)];
-  return placement?.amount ?? 0;
+  return SeasonService.getEventPayoutAmount(eventIndex, finishPosition, payoutBreakdown);
 };
 
-const getTeamFinishDisplayLabel = (teamName: string, options?: { finishPosition?: number; includePlacementPayout?: boolean }): string => {
+const getTeamFinishDisplayLabel = (teamName: string, options?: { finishPosition?: number; includePlacementPayout?: boolean; eventIndex?: number }): string => {
   const scoreLabel = getTeamScoreLabel(teamName);
   const playoffDistance = getTeamPlayoffDistance(teamName);
   const baseText = `${teamName} — ${scoreLabel}`;
   const distanceText = Number.isFinite(playoffDistance) && playoffDistance !== Number.POSITIVE_INFINITY ? ` --- ${playoffDistance}` : '';
   const finishPosition = options?.finishPosition;
   const includePlacementPayout = options?.includePlacementPayout ?? false;
+  const eventIndex = options?.eventIndex ?? selectedTournamentIndex;
   const placementText = includePlacementPayout && typeof finishPosition === 'number' ? ` --- ${finishPosition}` : '';
-  const payoutText = includePlacementPayout && typeof finishPosition === 'number' ? ` --- $${getTeamPayoutAmount(finishPosition).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+  const payoutText = includePlacementPayout && typeof finishPosition === 'number' ? ` --- $${getTeamPayoutAmount(finishPosition, eventIndex).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
   return `${baseText}${distanceText}${placementText}${payoutText}`;
 };
 
@@ -671,10 +671,9 @@ const renderAdminApprovalDashboard = (): string => {
   const visibleFinishOrder = normalizeFinishOrder(scorekeeperGroupLabels, finishOrder);
   const visibleTeamFinishOrder = getOrderedTeamFinishList();
   const payoutBreakdown = seed.payoutBreakdown ?? SeasonService.createProgressivePayoutBreakdown();
-  const totalPaidOutAmount = payoutBreakdown.events.at(-1)?.eventTotal ?? payoutBreakdown.totalPurse;
-
   const tournamentEntries = seed.schedule.getEvents();
-  const activeTournamentIndex = Math.min(Math.max(selectedTournamentIndex, 0), tournamentEntries.length - 1);
+  const activeTournamentIndex = Math.min(Math.max(selectedTournamentIndex, 0), Math.max(tournamentEntries.length - 1, 0));
+  const totalPaidOutAmount = payoutBreakdown.events[activeTournamentIndex]?.eventTotal ?? payoutBreakdown.totalPurse;
   const activeTournament = tournamentEntries[activeTournamentIndex] ?? tournamentEntries[0];
 
   const pendingApprovalGroups = scorekeeperGroupLabels.map((group) => {
@@ -826,7 +825,7 @@ const renderAdminApprovalDashboard = (): string => {
               ${visibleTeamFinishOrder
                 .map(
                   (teamName, index) => `
-                    <li style="margin-bottom: 0.35rem;">${getTeamFinishDisplayLabel(teamName, { finishPosition: index + 1, includePlacementPayout: teamFinishOrderConfirmed })}</li>
+                    <li style="margin-bottom: 0.35rem;">${getTeamFinishDisplayLabel(teamName, { finishPosition: index + 1, includePlacementPayout: teamFinishOrderConfirmed, eventIndex: selectedTournamentIndex })}</li>
                   `,
                 )
                 .join('')}
@@ -836,7 +835,7 @@ const renderAdminApprovalDashboard = (): string => {
               : `
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 0.75rem; flex-wrap: wrap;">
                   <div class="payout-meta">Order confirmed</div>
-                  <div class="payout-meta" style="font-weight: 600; color: white;">Total paid out: $${totalPaidOutAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  <div class="payout-meta" style="font-weight: 600; color: white;">Total paid out for this event: $${totalPaidOutAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                 </div>
               `}
           </div>
@@ -971,7 +970,7 @@ const renderScorekeeperDashboard = (): string => {
           ${teamFinishOrder
             .map(
               (teamName, index) => `
-                <li style="margin-bottom: 0.5rem;">${getTeamFinishDisplayLabel(teamName, { finishPosition: index + 1, includePlacementPayout: teamFinishOrderConfirmed })}</li>
+                <li style="margin-bottom: 0.5rem;">${getTeamFinishDisplayLabel(teamName, { finishPosition: index + 1, includePlacementPayout: teamFinishOrderConfirmed, eventIndex: selectedTournamentIndex })}</li>
               `,
             )
             .join('')}
@@ -1448,6 +1447,7 @@ const renderHomePage = (): string => {
         </button>
         <div id="payout-breakdown-content" class="collapsible-content collapsed" hidden>
           <p class="role-access-note">Progressive season purse: <strong>$${payoutBreakdown.totalPurse.toLocaleString()}</strong> across 6 events</p>
+          <p class="role-access-note">Event totals: <strong>$${payoutBreakdown.events.reduce((sum, event) => sum + event.eventTotal, 0).toLocaleString()}</strong> · Matches the season purse total</p>
           <div class="payout-grid">
             ${payoutBreakdown.events
               .map(

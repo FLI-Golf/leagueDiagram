@@ -57,6 +57,7 @@ describe('Season service facade', () => {
     expect(seed.course.getHoleByNumber(3).getSponsors()[0].name).toMatch(/Creekside Sponsor|Hazard Partners|Fairway Support/);
     expect(seed.schedule.getEvents()).toHaveLength(6);
     expect(seed.schedule.getEvents()[0].date).toBe('2026-09-01');
+    expect(seed.schedule.getEvents()[0].result.name).toBe("America's Mobile Open");
     expect(seed.schedule.getEvents()[1].date).toBe('2026-09-15');
     expect(seed.schedule.getEvents()[2].date).toBe('2026-09-29');
     expect(seed.holeMetadata[2].prize.amount).toBe(120);
@@ -95,11 +96,22 @@ describe('Season service facade', () => {
 
     expect(payoutBreakdown.totalPurse).toBe(4_000_000);
     expect(payoutBreakdown.events).toHaveLength(6);
+    expect(payoutBreakdown.events[0].name).toBe("America's Mobile Open");
     expect(payoutBreakdown.events[0].eventTotal).toBe(400_000);
     expect(payoutBreakdown.events[5].eventTotal).toBe(1_120_000);
     expect(payoutBreakdown.events[0].placements).toHaveLength(12);
-    expect(payoutBreakdown.events[0].placements[0].amount).toBe(96_000);
-    expect(payoutBreakdown.events[5].placements[0].amount).toBe(268_800);
+    expect(payoutBreakdown.events[0].placements[0].amount).toBe(94_490);
+    expect(payoutBreakdown.events[5].placements[0].amount).toBe(264_568);
+    expect(payoutBreakdown.events[0].placements[6].amount).toBe(20_472);
+    expect(payoutBreakdown.events[5].placements[11].amount).toBe(7_165);
+
+    const eventTotals = payoutBreakdown.events.reduce((sum, event) => sum + event.eventTotal, 0);
+    expect(eventTotals).toBe(payoutBreakdown.totalPurse);
+
+    for (const event of payoutBreakdown.events) {
+      const placementsTotal = event.placements.reduce((sum, placement) => sum + placement.amount, 0);
+      expect(placementsTotal).toBe(event.eventTotal);
+    }
   });
 
   it('keeps payout amounts descending by finish position', () => {
@@ -109,5 +121,14 @@ describe('Season service facade', () => {
     for (let index = 1; index < placements.length; index += 1) {
       expect(placements[index - 1].amount).toBeGreaterThan(placements[index].amount);
     }
+  });
+
+  it('uses the selected event total and payout amount instead of the championship total', () => {
+    const payoutBreakdown = SeasonService.createProgressivePayoutBreakdown();
+
+    expect(SeasonService.getEventPayoutTotal(0, payoutBreakdown)).toBe(400_000);
+    expect(SeasonService.getEventPayoutAmount(0, 1, payoutBreakdown)).toBe(94_490);
+    expect(SeasonService.getEventPayoutTotal(5, payoutBreakdown)).toBe(1_120_000);
+    expect(SeasonService.getEventPayoutAmount(5, 1, payoutBreakdown)).toBe(264_568);
   });
 });

@@ -93,19 +93,37 @@ export class SeasonService {
     return SeasonService.createRealisticLeagueSeed(id, name, purseAmount);
   }
 
+  static getEventPayoutAmount(eventIndex: number, finishPosition: number, payoutBreakdown: SeasonPayoutBreakdown = SeasonService.createProgressivePayoutBreakdown()): number {
+    const placements = payoutBreakdown.events[eventIndex]?.placements ?? [];
+    const placement = placements[Math.max(0, finishPosition - 1)];
+    return placement?.amount ?? 0;
+  }
+
+  static getEventPayoutTotal(eventIndex: number, payoutBreakdown: SeasonPayoutBreakdown = SeasonService.createProgressivePayoutBreakdown()): number {
+    return payoutBreakdown.events[eventIndex]?.eventTotal ?? payoutBreakdown.totalPurse;
+  }
+
   static createProgressivePayoutBreakdown(): SeasonPayoutBreakdown {
     const eventTotals = [400_000, 480_000, 560_000, 720_000, 720_000, 1_120_000];
     const eventDates = ['2026-09-01', '2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10'];
-    const eventNames = ['September Open', 'Blackwood Clash', 'Ridge Rumble', 'Autumn Classic', 'Pine Valley Showdown', 'Championship Weekend'];
-    const weights = [0.24, 0.2, 0.16, 0.12, 0.08, 0.06, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005];
+    const eventNames = ["America's Mobile Open", 'Blackwood Clash', 'Ridge Rumble', 'Autumn Classic', 'Pine Valley Showdown', 'Championship Weekend'];
+    const baseWeights = [0.24, 0.2, 0.16, 0.12, 0.08, 0.06, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005];
+    const boostedWeights = baseWeights.map((weight, placementIndex) => (placementIndex >= 6 ? weight * 1.3 : weight));
+    const normalizedWeights = boostedWeights.map((weight) => weight / boostedWeights.reduce((sum, item) => sum + item, 0));
 
     const events = eventNames.map((name, index) => {
       const eventTotal = eventTotals[index];
       const placements = Array.from({ length: 12 }, (_, placementIndex) => ({
         place: placementIndex + 1,
         label: `${placementIndex + 1}${placementIndex === 0 ? 'st' : placementIndex === 1 ? 'nd' : placementIndex === 2 ? 'rd' : 'th'} place`,
-        amount: Math.round(eventTotal * weights[placementIndex]),
+        amount: Math.round(eventTotal * normalizedWeights[placementIndex]),
       }));
+      const placementsTotal = placements.reduce((sum, placement) => sum + placement.amount, 0);
+      const remainder = eventTotal - placementsTotal;
+
+      if (remainder !== 0) {
+        placements[0].amount += remainder;
+      }
 
       return {
         name,
