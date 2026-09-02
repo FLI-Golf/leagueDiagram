@@ -4,6 +4,8 @@ import { resolveAppRoute, getProPlayers, getTeamSummaries } from './application/
 import { areAllGroupsApproved, normalizeFinishOrder, sortTeamsByScore } from './application/FinishOrder';
 import { buildGroupScorecard, convertDisplayedHoleValueToStoredScore, getDisplayedHoleValueForPlayer, normalizeScoreEditValue } from './application/ScorecardSummary';
 import { SeasonService } from './application/SeasonService';
+import { MockDraftSeries } from './domain/draft/MockDraftSeries';
+import { DraftRoom } from './domain/draft/DraftRoom';
 import { Group } from './domain/pipeline/Group';
 import { generateGroupScoreSeed } from './domain/pipeline/GroupSeed';
 import { UserProfile } from './domain/user/UserProfile';
@@ -51,9 +53,16 @@ let approvedGroups: Record<string, boolean> = {};
 let finishOrder: string[] = [...scorekeeperGroupLabels];
 let teamPlayoffDistances: Record<string, number> = {};
 let teamFinishOrderConfirmed = false;
+let confirmedEventScores: Record<string, Record<string, number>> = {};
 let selectedApprovalGroup = scorekeeperGroupLabels[0] ?? '';
 let lastScoreDirection: 'next' | 'previous' = 'next';
 let pendingPlayerScoreReview: { groupName: string; playerName: string; teamName: string } | null = null;
+let fantasyDraftSeries: MockDraftSeries | null = null;
+let selectedDraftTournamentId: string | null = null;
+let draftClockHandle: number | null = null;
+let draftAutoPickEnabled = true;
+const autoPickedNumbers = new Set<number>();
+const fantasyDraftTimerSeconds = 7;
 
 const SCOREKEEPER_STATE_STORAGE_KEY = 'league-demo-scorekeeper-state';
 const app = document.querySelector('#app');
@@ -73,6 +82,7 @@ const getStoredScorekeeperState = (): Partial<{
   finishOrder: string[];
   teamPlayoffDistances: Record<string, number>;
   teamFinishOrderConfirmed: boolean;
+  confirmedEventScores: Record<string, Record<string, number>>;
 }> => {
   try {
     const raw = window.localStorage.getItem(SCOREKEEPER_STATE_STORAGE_KEY);
@@ -95,6 +105,7 @@ const saveScorekeeperState = (): void => {
         finishOrder,
         teamPlayoffDistances,
         teamFinishOrderConfirmed,
+        confirmedEventScores,
       }),
     );
   } catch {
@@ -111,6 +122,7 @@ const resetScorekeeperState = (): void => {
   finishOrder = [...scorekeeperGroupLabels];
   teamPlayoffDistances = {};
   teamFinishOrderConfirmed = false;
+  confirmedEventScores = {};
   window.localStorage.removeItem(SCOREKEEPER_STATE_STORAGE_KEY);
   renderApp();
 };
@@ -133,6 +145,202 @@ const seedAllGroupScoresForTesting = (): void => {
   renderApp();
 };
 
+const fantasyDraftOwnerId = 'fantasy-owner';
+const fantasyDraftParticipantIds = ['owen-bell', 'nina-alvarez', 'harper-quinn', 'marcus-webb', 'taylor-reed'];
+
+const getDraftPlayerPool = () => seed.realLeagueTeams.flatMap((team) => [...team.players]);
+
+const getScheduledTournamentIds = (): string[] => seed.schedule.getEvents().map((entry) => entry.result.id);
+
+const getTournamentName = (tournamentId: string): string =>
+  seed.schedule.getEvents().find((entry) => entry.result.id === tournamentId)?.result.name ?? tournamentId;
+
+const getDraftDisplayName = (participantId: string): string =>
+  userDirectory.find((user) => user.id === participantId)?.displayName ?? participantId;
+
+const getSelectedDraftRoom = (): DraftRoom | null => {
+  if (!fantasyDraftSeries || !selectedDraftTournamentId) {
+    return null;
+  }
+
+  return fantasyDraftSeries.getRooms().find((room) => room.tournamentId === selectedDraftTournamentId) ?? null;
+};
+
+// Tournaments before the one in view count as already played, so a late draft covers fewer events.
+const seedFantasyDraft = (): void => {
+  const scheduled = getScheduledTournamentIds();
+  const remaining = MockDraftSeries.remainingTournaments(scheduled, scheduled.slice(0, selectedTournamentIndex));
+
+  if (remaining.length === 0) {
+    return;
+  }
+
+  const series = new MockDraftSeries('fantasy-draft', fantasyDraftOwnerId);
+  series.configure(fantasyDraftOwnerId, remaining, getDraftPlayerPool(), fantasyDraftTimerSeconds);
+
+  for (const participantId of fantasyDraftParticipantIds) {
+    series.join(participantId);
+  }
+
+  fantasyDraftSeries = series;
+  selectedDraftTournamentId = remaining[0];
+  renderApp();
+};
+
+const advanceFantasyDraftPicks = (count: number): void => {
+  const room = getSelectedDraftRoom();
+  if (!room || room.isLocked()) {
+    return;
+  }
+
+  for (let pick = 0; pick < count && room.getStatus() !== 'complete'; pick += 1) {
+    const participantId = room.getParticipantOnTheClock();
+    if (!participantId) {
+      break;
+    }
+
+    const [player] = room.getSelectablePlayers(participantId);
+    if (!player) {
+      break;
+    }
+
+    room.pick(participantId, player.id);
+  }
+
+  renderApp();
+};
+
+const resetFantasyDraft = (): void => {
+  stopDraftClock();
+  autoPickedNumbers.clear();
+  fantasyDraftSeries = null;
+  selectedDraftTournamentId = null;
+  renderApp();
+};
+
+const getSelectedTournamentId = (): string => getScheduledTournamentIds()[selectedTournamentIndex] ?? '';
+
+// Confirming both publishes the event's scores and closes its draft for good.
+const confirmSelectedTournamentResults = (): void => {
+  const tournamentId = getSelectedTournamentId();
+  teamFinishOrderConfirmed = true;
+  confirmedEventScores[tournamentId] = captureEventProScores();
+  fantasyDraftSeries?.lockRoom(tournamentId);
+  saveScorekeeperState();
+  renderApp();
+};
+
+// One shot for testing: run the draft first, then play the event and confirm it.
+const seedScoredEventAndDraft = (): void => {
+  if (!fantasyDraftSeries) {
+    seedFantasyDraft();
+  }
+
+  const room = getSelectedDraftRoom();
+  if (room && !room.isLocked()) {
+    while (room.getStatus() !== 'complete') {
+      const participantId = room.getParticipantOnTheClock();
+      if (!participantId) {
+        break;
+      }
+
+      const [player] = room.getSelectablePlayers(participantId);
+      if (!player) {
+        break;
+      }
+
+      room.pick(participantId, player.id);
+    }
+  }
+
+  scorekeeperScoresByHole = generateGroupScoreSeed(scorekeeperGroupLabels, scorekeeperGroupLineups, 18);
+  scorekeeperScoringStage = 'complete';
+  currentScoringHoleIndex = 17;
+  scorekeeperGroupLabels.forEach((group) => {
+    approvedGroups[group] = true;
+  });
+  finishOrder = normalizeFinishOrder(scorekeeperGroupLabels, finishOrder);
+  finishOrder = getTeamFinishEntries().map((entry) => entry.teamName);
+  confirmSelectedTournamentResults();
+};
+
+// Mock ranking: teams are seeded strongest-first, so a player's slot within their gender is their rating.
+const getDraftRating = (player: { id: string; gender: string }): number => {
+  const rank = getDraftPlayerPool()
+    .filter((entry) => entry.gender === player.gender)
+    .findIndex((entry) => entry.id === player.id);
+  return 100 - rank * 2;
+};
+
+const getDraftTeamName = (playerId: string): string =>
+  seed.realLeagueTeams.find((team) => team.players.some((player) => player.id === playerId))?.name ?? '';
+
+const getRecommendedPick = (room: DraftRoom, participantId: string) =>
+  [...room.getSelectablePlayers(participantId)].sort((left, right) => getDraftRating(right) - getDraftRating(left))[0];
+
+const stopDraftClock = (): void => {
+  if (draftClockHandle !== null) {
+    window.clearInterval(draftClockHandle);
+    draftClockHandle = null;
+  }
+};
+
+const tickDraftClock = (): void => {
+  const room = getSelectedDraftRoom();
+  if (!room || room.getStatus() !== 'inProgress') {
+    stopDraftClock();
+    return;
+  }
+
+  const now = Date.now();
+  const remaining = room.getSecondsRemaining(now);
+  const timerLabels = document.querySelectorAll('.draft-clock-value');
+
+  if (remaining > 0) {
+    timerLabels.forEach((label) => {
+      label.textContent = `${remaining}s`;
+    });
+    return;
+  }
+
+  if (!draftAutoPickEnabled) {
+    timerLabels.forEach((label) => {
+      label.textContent = 'Expired';
+    });
+    return;
+  }
+
+  autoPickedNumbers.add(room.autoPick(now).pickNumber);
+  renderApp();
+};
+
+const startFantasyDraft = (): void => {
+  const room = getSelectedDraftRoom();
+  if (!room || room.getStatus() !== 'pending' || room.isLocked()) {
+    return;
+  }
+
+  room.open(fantasyDraftOwnerId, Date.now());
+  stopDraftClock();
+  draftClockHandle = window.setInterval(tickDraftClock, 1000);
+  renderApp();
+};
+
+const makeDraftPick = (playerId: string): void => {
+  const room = getSelectedDraftRoom();
+  const participantId = room?.getParticipantOnTheClock();
+  if (!room || !participantId || room.isLocked()) {
+    return;
+  }
+
+  room.pick(participantId, playerId, Date.now());
+  renderApp();
+};
+
+const setFantasyDraftTimer = (seconds: number): void => {
+  getSelectedDraftRoom()?.setTimerSeconds(fantasyDraftOwnerId, seconds);
+  renderApp();
+};
 const persistedScorekeeperState = getStoredScorekeeperState();
 if (persistedScorekeeperState.assignments) {
   scorekeeperAssignments = { ...defaultScorekeeperAssignments, ...persistedScorekeeperState.assignments };
@@ -158,30 +366,43 @@ if (persistedScorekeeperState.teamPlayoffDistances) {
 if (typeof persistedScorekeeperState.teamFinishOrderConfirmed === 'boolean') {
   teamFinishOrderConfirmed = persistedScorekeeperState.teamFinishOrderConfirmed;
 }
+if (persistedScorekeeperState.confirmedEventScores) {
+  confirmedEventScores = persistedScorekeeperState.confirmedEventScores;
+}
 syncScorekeeperGroupLineupsForSelectedTournament();
 
 const proProfiles = [
-  new UserProfile('simon-lizotte', 'Simon Lizotte', 'simon@fli.example.com', ['pro', 'fantasyParticipant', 'viewer'], 'Disc golf pro and content creator'),
-  new UserProfile('paul-mcbeth', 'Paul McBeth', 'paul@fli.example.com', ['pro', 'fantasyLeagueOwner', 'viewer'], 'Tour-level competitor and fantasy league owner'),
-  new UserProfile('gannon-buhr', 'Gannon Buhr', 'gannon@fli.example.com', ['pro', 'scorekeeper', 'viewer'], 'Player, analyst, and score oversight lead'),
-  new UserProfile('ricky-wysocki', 'Ricky Wysocki', 'ricky@fli.example.com', ['pro', 'viewer'], 'Content creator and course strategy expert'),
+  new UserProfile('simon-lizotte', 'Simon Lizotte', 'simon@fli.example.com', ['pro'], 'Disc golf pro and content creator'),
+  new UserProfile('paul-mcbeth', 'Paul McBeth', 'paul@fli.example.com', ['pro'], 'Tour-level competitor and fantasy league owner'),
+  new UserProfile('gannon-buhr', 'Gannon Buhr', 'gannon@fli.example.com', ['pro'], 'Player, analyst, and score oversight lead'),
+  new UserProfile('ricky-wysocki', 'Ricky Wysocki', 'ricky@fli.example.com', ['pro'], 'Content creator and course strategy expert'),
 ];
 
 const adminProfiles = [
-  new UserProfile('league-admin', 'League Admin', 'admin@fli.example.com', ['leagueAdmin', 'viewer'], 'League operations and scoring lead'),
-  new UserProfile('fantasy-owner', 'Fantasy Owner', 'fantasy-owner@fli.example.com', ['fantasyLeagueOwner', 'fantasyParticipant', 'viewer'], 'Controls the fantasy league and participant rules'),
+  new UserProfile('league-admin', 'League Admin', 'admin@fli.example.com', ['leagueAdmin'], 'League operations and scoring lead'),
+  new UserProfile('fantasy-owner', 'Fantasy Owner', 'fantasy-owner@fli.example.com', ['fantasyLeagueOwner'], 'Controls the fantasy league and participant rules'),
 ];
 
 const scorekeeperProfiles = [
-  new UserProfile('ava-park', 'Ava Park', 'ava@fli.example.com', ['scorekeeper', 'viewer'], 'Covers Group A'),
-  new UserProfile('diego-ruiz', 'Diego Ruiz', 'diego@fli.example.com', ['scorekeeper', 'viewer'], 'Covers Group B'),
-  new UserProfile('renee-walsh', 'Renee Walsh', 'renee@fli.example.com', ['scorekeeper', 'viewer'], 'Covers Group C'),
-  new UserProfile('maya-brooks', 'Maya Brooks', 'maya@fli.example.com', ['scorekeeper', 'viewer'], 'Covers Group D'),
-  new UserProfile('noah-chen', 'Noah Chen', 'noah@fli.example.com', ['scorekeeper', 'viewer'], 'Covers Group E'),
-  new UserProfile('jamie-lopez', 'Jamie Lopez', 'jamie@fli.example.com', ['scorekeeper', 'viewer'], 'Covers Group F'),
+  new UserProfile('ava-park', 'Ava Park', 'ava@fli.example.com', ['scorekeeper'], 'Covers Group A'),
+  new UserProfile('diego-ruiz', 'Diego Ruiz', 'diego@fli.example.com', ['scorekeeper'], 'Covers Group B'),
+  new UserProfile('renee-walsh', 'Renee Walsh', 'renee@fli.example.com', ['scorekeeper'], 'Covers Group C'),
+  new UserProfile('maya-brooks', 'Maya Brooks', 'maya@fli.example.com', ['scorekeeper'], 'Covers Group D'),
+  new UserProfile('noah-chen', 'Noah Chen', 'noah@fli.example.com', ['scorekeeper'], 'Covers Group E'),
+  new UserProfile('jamie-lopez', 'Jamie Lopez', 'jamie@fli.example.com', ['scorekeeper'], 'Covers Group F'),
 ];
 
-const userDirectory = [...proProfiles, ...adminProfiles, ...scorekeeperProfiles];
+// Community accounts covering the registered-user lifecycle and the commerce tags.
+const fanProfiles = [
+  UserProfile.register('taylor-reed', 'Taylor Reed', 'taylor@fli.example.com', 'Just registered, no purchases yet'),
+  new UserProfile('harper-quinn', 'Harper Quinn', 'harper@fli.example.com', ['viewer'], 'Follows the league and buys event tickets', ['ticketBuyer']),
+  new UserProfile('marcus-webb', 'Marcus Webb', 'marcus@fli.example.com', ['viewer'], 'Season pass holder and shop regular', ['seasonPassHolder', 'merchandiseBuyer']),
+  new UserProfile('nina-alvarez', 'Nina Alvarez', 'nina@fli.example.com', ['viewer', 'fantasyParticipant'], 'Plays in a friend-run fantasy league', ['ticketBuyer']),
+  new UserProfile('owen-bell', 'Owen Bell', 'owen@fli.example.com', ['viewer', 'fantasyLeagueOwner', 'fantasyParticipant'], 'Started his own fantasy league last season', ['merchandiseBuyer']),
+  new UserProfile('sage-collins', 'Sage Collins', 'sage@fli.example.com', ['viewer'], 'Local shop sponsoring hole signage', ['sponsor']),
+];
+
+const userDirectory = [...proProfiles, ...adminProfiles, ...scorekeeperProfiles, ...fanProfiles];
 
 const getStoredPosts = (): Record<string, string[]> => {
   try {
@@ -341,12 +562,24 @@ const renderRoleBadges = (user: UserProfile): string => {
     viewer: 'Viewer',
   };
 
+  const tagLabels: Record<string, string> = {
+    ticketBuyer: 'Ticket buyer',
+    merchandiseBuyer: 'Merch buyer',
+    seasonPassHolder: 'Season pass',
+    sponsor: 'Sponsor',
+  };
+
   return `
     <div class="role-badges">
       ${user
         .getRoles()
         .filter((role) => roleLabels[role])
         .map((role) => `<span class="role-badge role-${role}">${roleLabels[role]}</span>`)
+        .join('')}
+      ${user
+        .getTags()
+        .filter((tag) => tagLabels[tag])
+        .map((tag) => `<span class="role-badge tag-badge">${tagLabels[tag]}</span>`)
         .join('')}
     </div>
   `;
@@ -664,6 +897,26 @@ const getTeamFinishDisplayLabel = (teamName: string, options?: { finishPosition?
   const payoutText = includePlacementPayout && typeof finishPosition === 'number' ? ` --- $${getTeamPayoutAmount(finishPosition, eventIndex).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
   return `${baseText}${distanceText}${placementText}${payoutText}`;
 };
+
+// Snapshot taken when the admin confirms, so each tournament keeps its own result set.
+const captureEventProScores = (): Record<string, number> => {
+  const scores: Record<string, number> = {};
+  for (const groupName of scorekeeperGroupLabels) {
+    const groupCard = buildGroupScorecard(groupName, scorekeeperGroupLineups[groupName] ?? [], scorekeeperScoresByHole);
+    for (const playerRow of groupCard) {
+      scores[playerRow.player] = playerRow.totalRelativeToPar;
+    }
+  }
+
+  return scores;
+};
+
+const getConfirmedProScores = (tournamentId: string): Map<string, number> | null => {
+  const scores = confirmedEventScores[tournamentId];
+  return scores ? new Map(Object.entries(scores)) : null;
+};
+
+const formatRelativeToPar = (total: number): string => (total === 0 ? 'E' : `${total > 0 ? '+' : ''}${total}`);
 
 const renderAdminApprovalDashboard = (): string => {
   const allGroupsSubmitted = scorekeeperGroupLabels.every(hasGroupSubmittedAllHoles);
@@ -1233,6 +1486,350 @@ const getSelectedCourseNineHoles = (course: { getHoles: () => readonly any[] }) 
   return frontNine.length > 0 ? frontNine : holes;
 };
 
+const draftIcons: Record<string, string> = {
+  clock: `<svg class="draft-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
+  round: `<svg class="draft-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>`,
+  pick: `<svg class="draft-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 13 4 4L20 5"/></svg>`,
+  user: `<svg class="draft-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20v-1a7 7 0 0 1 14 0v1"/></svg>`,
+  star: `<svg class="draft-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 2.6 5.6 6 .8-4.4 4.2 1.1 6.1L12 16.9 6.7 19.7l1.1-6.1L3.4 9.4l6-.8Z"/></svg>`,
+  disc: `<svg class="draft-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="9" ry="5"/><ellipse cx="12" cy="12" rx="4" ry="2"/></svg>`,
+  list: `<svg class="draft-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.3"/><circle cx="3.5" cy="12" r="1.3"/><circle cx="3.5" cy="18" r="1.3"/></svg>`,
+  lock: `<svg class="draft-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>`,
+};
+
+const renderFantasyDraftPanel = (): string => {
+  const seedControls = `
+    <div class="action-row" style="margin-top: 18px;">
+      <button type="button" class="primary-button" data-seed-scored-event="true">Seed scored event + draft</button>
+      <button type="button" class="primary-button" data-seed-fantasy-draft="true">Seed fantasy draft</button>
+      <button type="button" class="primary-button" data-advance-draft="1" ${fantasyDraftSeries ? '' : 'disabled aria-disabled="true"'}>Draft next pick</button>
+      <button type="button" class="primary-button" data-advance-draft="12" ${fantasyDraftSeries ? '' : 'disabled aria-disabled="true"'}>Seed rounds 1 &amp; 2</button>
+      <button type="button" class="primary-button" data-advance-draft="24" ${fantasyDraftSeries ? '' : 'disabled aria-disabled="true"'}>Complete draft</button>
+      <button type="button" class="secondary-button" data-reset-fantasy-draft="true">Reset fantasy draft</button>
+    </div>
+  `;
+
+  const room = getSelectedDraftRoom();
+
+  if (!fantasyDraftSeries || !room) {
+    const remaining = getScheduledTournamentIds().length - selectedTournamentIndex;
+
+    return `
+      <section class="panel">
+        <div class="section-header-row">
+          <div>
+            <p class="eyebrow">Draft controls</p>
+            <h2>Fantasy draft not seeded</h2>
+          </div>
+          <span class="tee-time-badge">Idle</span>
+        </div>
+        <p class="role-access-note">
+          Seeding drops ${getDraftDisplayName(fantasyDraftOwnerId)} plus five participants into the lobby and builds
+          one snake draft per remaining tournament (${remaining} left from the event in view).
+        </p>
+        ${seedControls}
+      </section>
+    `;
+  }
+
+  const onTheClock = room.getParticipantOnTheClock();
+  const status = room.getStatus();
+  const selectable = onTheClock ? room.getSelectablePlayers(onTheClock) : [];
+  const available = room.getAvailablePlayers();
+  const selectableIds = new Set(selectable.map((player) => player.id));
+  const recommended = onTheClock ? getRecommendedPick(room, onTheClock) : undefined;
+
+  const totalPicks = available.length + room.getPicks().length;
+
+  const stats = [
+    { label: 'Round', value: `${room.getCurrentRound()} of ${room.rounds}`, icon: draftIcons.round },
+    { label: 'Pick', value: `${Math.min(room.getPicks().length + 1, totalPicks)} of ${totalPicks}`, icon: draftIcons.pick },
+    { label: 'On the clock', value: onTheClock ? getDraftDisplayName(onTheClock) : 'Draft complete', icon: draftIcons.user },
+    { label: 'Pick timer', value: `${room.getTimerSeconds()}s`, icon: draftIcons.clock, isClock: true },
+  ];
+
+  const nextUp = room.getNextParticipant();
+
+  const onTheClockBanner = onTheClock
+    ? `
+      <div class="draft-clock-banner ${status === 'inProgress' ? 'is-live' : ''}">
+        <div>
+          <p class="eyebrow">${draftIcons.round} Round ${room.getCurrentRound()} · Pick ${room.getPicks().length + 1}</p>
+          <h3>${draftIcons.user} ${getDraftDisplayName(onTheClock)} is on the clock</h3>
+          <p class="role-access-note">
+            ${status === 'pending'
+              ? 'Press Start draft to run the clock.'
+              : draftAutoPickEnabled
+                ? `Pick from the board below, or ${recommended ? recommended.displayName : 'the top pro'} is taken automatically at 0s.`
+                : 'Auto-pick is off — the clock will stall at 0s until someone picks.'}
+          </p>
+          ${nextUp ? `<p class="draft-next-up">${draftIcons.list} Next up: <strong>${getDraftDisplayName(nextUp)}</strong></p>` : ''}
+        </div>
+        <div class="draft-clock-face">
+          <strong class="draft-clock-value">${room.getTimerSeconds()}s</strong>
+          <span>remaining</span>
+        </div>
+      </div>
+      ${recommended
+        ? `
+          <div class="draft-recommendation">
+            ${draftIcons.star}
+            <div>
+              <p class="eyebrow">Recommended pro</p>
+              <strong>${recommended.displayName}</strong>
+              <span>${recommended.gender === 'male' ? 'MPO' : 'FPO'} · ${getDraftTeamName(recommended.id)} · rating ${getDraftRating(recommended)}</span>
+            </div>
+            <button type="button" class="primary-button" data-draft-pick="${recommended.id}">${draftIcons.disc} Draft ${recommended.displayName}</button>
+          </div>
+        `
+        : ''}
+    `
+    : '';
+
+  const pickLog = room.getPicks().length
+    ? `
+      <div class="assignment-summary" style="margin-top: 12px;">
+        <strong>${draftIcons.list} Picks so far</strong>
+        <ol class="draft-pick-log">
+          ${[...room.getPicks()]
+            .reverse()
+            .map(
+              (pick) => `
+                <li>
+                  <span class="draft-pick-slot">R${pick.round} · P${pick.pickNumber}</span>
+                  <strong>${getDraftDisplayName(pick.participantId)}</strong>
+                  <span class="draft-pick-player draft-pick-player--${pick.player.gender}">${pick.player.displayName} (${pick.player.gender === 'male' ? 'MPO' : 'FPO'})</span>
+                  <span class="draft-pick-source draft-pick-source--${autoPickedNumbers.has(pick.pickNumber) ? 'auto' : 'manual'}">${autoPickedNumbers.has(pick.pickNumber) ? 'auto' : 'manual'}</span>
+                </li>
+              `,
+            )
+            .join('')}
+        </ol>
+      </div>
+    `
+    : '';
+
+  const draftBoard = status === 'complete' || room.isLocked()
+    ? ''
+    : `
+      <p class="role-access-note" style="margin-top: 16px;">
+        <strong>Board for ${getDraftDisplayName(onTheClock as string)}</strong>
+        ${recommended ? ` — recommended: ${recommended.displayName} (rating ${getDraftRating(recommended)})` : ''}
+      </p>
+      <div class="draft-board">
+        ${[...available]
+          .sort((left, right) => getDraftRating(right) - getDraftRating(left))
+          .map((player) => {
+            const isSelectable = selectableIds.has(player.id);
+            const isRecommended = recommended?.id === player.id;
+
+            return `
+              <button
+                type="button"
+                class="draft-player draft-player--${player.gender} ${isSelectable ? '' : 'draft-player--blocked'} ${isRecommended ? 'draft-player--recommended' : ''}"
+                data-draft-pick="${player.id}"
+                ${isSelectable ? '' : 'disabled aria-disabled="true"'}
+                title="${isSelectable ? 'Draft this player' : `Roster already full at ${player.gender}`}"
+              >
+                <strong>${isRecommended ? draftIcons.star : isSelectable ? draftIcons.disc : draftIcons.lock} ${player.displayName}</strong>
+                <span>${player.gender === 'male' ? 'MPO' : 'FPO'} · ${getDraftTeamName(player.id)}</span>
+                <span>Rating ${getDraftRating(player)}${isRecommended ? ' · recommended' : ''}</span>
+              </button>
+            `;
+          })
+          .join('')}
+      </div>
+    `;
+
+  const runControls = `
+    <div class="action-row" style="margin-top: 16px;">
+      <button type="button" class="primary-button" data-start-fantasy-draft="true" ${status === 'pending' ? '' : 'disabled aria-disabled="true"'}>
+        ${status === 'pending' ? 'Start draft' : status === 'complete' ? 'Draft complete' : 'Clock running'}
+      </button>
+      <button type="button" class="secondary-button" data-toggle-draft-autopick="true">
+        Auto-pick on expiry: ${draftAutoPickEnabled ? 'On' : 'Off'}
+      </button>
+      ${[7, 15, 30, 60]
+        .map(
+          (seconds) => `
+            <button type="button" class="${room.getTimerSeconds() === seconds ? 'primary-button' : 'secondary-button'}" data-draft-timer="${seconds}">${seconds}s</button>
+          `,
+        )
+        .join('')}
+    </div>
+  `;
+
+  // Ranked on mock rating until real tournament results exist to score against.
+  const proScores = getConfirmedProScores(room.tournamentId);
+
+  const describePlayer = (player: { displayName: string }): string => {
+    const score = proScores?.get(player.displayName);
+    return score === undefined
+      ? player.displayName
+      : `${player.displayName} <span class="draft-finish-tag">${formatRelativeToPar(score)}</span>`;
+  };
+
+  const leaderboardRows = room.order
+    .map((participantId) => {
+      const roster = room.getRoster(participantId);
+
+      return {
+        participantId,
+        roster,
+        total: roster.reduce((sum, player) => sum + (proScores?.get(player.displayName) ?? 0), 0),
+        projected: roster.reduce((sum, player) => sum + getDraftRating(player), 0),
+      };
+    })
+    // Lowest total wins once real scores are in; before that, best projected roster leads.
+    .sort((left, right) => (proScores ? left.total - right.total : right.projected - left.projected));
+
+  const leaderboard = status !== 'complete' && !room.isLocked()
+    ? ''
+    : `
+      <div class="section-header-row" style="margin-top: 20px;">
+        <div>
+          <p class="eyebrow">${draftIcons.star} Final rosters</p>
+          <h3>Fantasy team leaderboard</h3>
+        </div>
+        <span class="tee-time-badge">${proScores ? getTournamentName(room.tournamentId) : 'Projected'}</span>
+      </div>
+
+      <p class="role-access-note">
+        ${proScores
+          ? 'Every pro carries their own round score onto the fantasy roster that drafted them. Lowest four-player total wins.'
+          : 'Not scored yet — an admin has to confirm the team finish order for this event. Showing mock draft ratings until then.'}
+      </p>
+
+      <table class="draft-leaderboard">
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">Fantasy team</th>
+            <th scope="col">MPO</th>
+            <th scope="col">FPO</th>
+            <th scope="col">${proScores ? 'Total' : 'Projected'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${leaderboardRows
+            .map(
+              (entry, index) => `
+                <tr class="${index === 0 ? 'draft-leaderboard-leader' : ''}">
+                  <td>${index === 0 ? draftIcons.star : ''} ${index + 1}</td>
+                  <th scope="row">${getDraftDisplayName(entry.participantId)}</th>
+                  <td class="draft-pick-player--male">${entry.roster
+                    .filter((player) => player.gender === 'male')
+                    .map((player) => describePlayer(player))
+                    .join(', ')}</td>
+                  <td class="draft-pick-player--female">${entry.roster
+                    .filter((player) => player.gender === 'female')
+                    .map((player) => describePlayer(player))
+                    .join(', ')}</td>
+                  <td class="draft-leaderboard-score">${proScores ? formatRelativeToPar(entry.total) : entry.projected}</td>
+                </tr>
+              `,
+            )
+            .join('')}
+        </tbody>
+      </table>
+    `;
+
+  // Once a room is done the live controls are noise; the leaderboard is the whole story.
+  const liveSections = status === 'complete' || room.isLocked()
+    ? ''
+    : `
+      <div class="stat-list">
+        ${stats
+          .map(
+            (stat) => `
+              <div class="stat-tile stat-tile--icon">
+                ${stat.icon}
+                <strong ${stat.isClock ? 'class="draft-clock-value"' : ''}>${stat.value}</strong>
+                <span>${stat.label}</span>
+              </div>
+            `,
+          )
+          .join('')}
+      </div>
+
+      ${onTheClockBanner}
+
+      ${runControls}
+
+      <div class="group-assignment-grid" style="margin-top: 16px;">
+        ${room.order
+          .map((participantId) => {
+            const roster = room.getRoster(participantId);
+            const males = room.getGenderCount(participantId, 'male');
+            const females = room.getGenderCount(participantId, 'female');
+
+            return `
+              <div class="stat-tile draft-roster-tile ${participantId === onTheClock ? 'draft-roster-tile--on-the-clock' : ''} ${participantId === nextUp ? 'draft-roster-tile--next' : ''}">
+                <strong>${draftIcons.user} ${getDraftDisplayName(participantId)}</strong>
+                <span class="draft-roster-turn">${participantId === onTheClock ? `${draftIcons.clock} On the clock` : participantId === nextUp ? `${draftIcons.round} Next up` : `${draftIcons.pick} ${roster.length} of ${room.rounds} drafted`}</span>
+                <span class="draft-slot-row">
+                  ${Array.from({ length: room.rounds })
+                    .map((_, slot) => {
+                      const player = roster[slot];
+                      return `<span class="draft-slot ${player ? `draft-slot--${player.gender}` : 'draft-slot--empty'}" title="${player ? player.displayName : 'Open slot'}"></span>`;
+                    })
+                    .join('')}
+                </span>
+                <span>${males}M / ${females}F</span>
+                <span>${roster.length ? roster.map((player) => player.displayName).join(', ') : 'No picks yet'}</span>
+              </div>
+            `;
+          })
+          .join('')}
+      </div>
+    `;
+
+  return `
+    <section class="panel">
+      <div class="section-header-row">
+        <div>
+          <p class="eyebrow">Draft controls</p>
+          <h2>${getTournamentName(room.tournamentId)} draft</h2>
+        </div>
+        <span class="tee-time-badge">${status === 'complete' ? 'Complete' : status === 'inProgress' ? 'Live' : 'Ready'}</span>
+      </div>
+
+      ${room.isLocked()
+        ? `<p class="role-access-note draft-locked-note">${draftIcons.lock} Picks are closed — ${getTournamentName(room.tournamentId)} has started.</p>`
+        : ''}
+
+      <div class="action-row" style="margin-bottom: 12px;">
+        ${fantasyDraftSeries
+          .getRooms()
+          .map((entry) => {
+            const isComplete = entry.getStatus() === 'complete';
+            const isActive = entry.tournamentId === room.tournamentId;
+
+            return `
+              <button
+                type="button"
+                class="${isActive ? 'primary-button' : 'secondary-button'} draft-tab ${isComplete ? 'draft-tab--complete' : ''}"
+                data-draft-tournament="${entry.tournamentId}"
+                title="${isComplete ? 'Draft complete' : 'Draft still open'}"
+              >${isComplete ? draftIcons.lock : draftIcons.disc} ${getTournamentName(entry.tournamentId)}</button>
+            `;
+          })
+          .join('')}
+      </div>
+
+      ${liveSections}
+
+      ${draftBoard}
+
+      ${leaderboard}
+
+      ${pickLog}
+
+      ${seedControls}
+    </section>
+  `;
+};
+
 const renderHomePage = (): string => {
   const currentUser = getCurrentUser();
   const selectedFilter = selectedDashboardFilter || 'Manage league';
@@ -1256,6 +1853,29 @@ const renderHomePage = (): string => {
         </section>
 
         ${currentUser.hasRole('leagueAdmin') && selectedFilter === 'Approve scores' ? renderAdminApprovalDashboard() : renderScorekeeperDashboard()}
+      </main>
+    `;
+  }
+
+  if (selectedFilter === 'Draft controls' || selectedFilter === 'Fantasy league') {
+    return `
+      <main class="page-shell">
+        <header class="hero">
+          <div class="title-group">
+            <p class="eyebrow">Dashboard</p>
+            <div class="title-with-badges">
+              <h1>${seed.season.league.name}</h1>
+              ${renderRoleBadges(currentUser)}
+            </div>
+          </div>
+        </header>
+
+        <section class="dashboard-layout">
+          <div class="dashboard-column">${renderDashboardMenus()}</div>
+          <div class="dashboard-column">${renderLoginPane()}</div>
+        </section>
+
+        ${renderFantasyDraftPanel()}
       </main>
     `;
   }
@@ -2145,6 +2765,7 @@ app.addEventListener('click', (event) => {
       });
       finishOrder = reordered.map((entry) => entry.teamName);
       teamFinishOrderConfirmed = false;
+      delete confirmedEventScores[getSelectedTournamentId()];
       saveScorekeeperState();
       renderApp();
     }
@@ -2153,9 +2774,7 @@ app.addEventListener('click', (event) => {
 
   const confirmTeamFinishOrderButton = event.target instanceof HTMLElement ? event.target.closest('[data-confirm-team-finish-order]') : null;
   if (confirmTeamFinishOrderButton) {
-    teamFinishOrderConfirmed = true;
-    saveScorekeeperState();
-    renderApp();
+    confirmSelectedTournamentResults();
     return;
   }
 
@@ -2195,6 +2814,63 @@ app.addEventListener('click', (event) => {
   const seedAllScoresButton = event.target instanceof HTMLElement ? event.target.closest('[data-seed-all-group-scores]') : null;
   if (seedAllScoresButton) {
     seedAllGroupScoresForTesting();
+    return;
+  }
+
+  const seedDraftButton = event.target instanceof HTMLElement ? event.target.closest('[data-seed-fantasy-draft]') : null;
+  if (seedDraftButton) {
+    seedFantasyDraft();
+    return;
+  }
+
+  const seedScoredEventButton = event.target instanceof HTMLElement ? event.target.closest('[data-seed-scored-event]') : null;
+  if (seedScoredEventButton) {
+    seedScoredEventAndDraft();
+    return;
+  }
+
+  const advanceDraftButton = event.target instanceof HTMLElement ? event.target.closest('[data-advance-draft]') : null;
+  if (advanceDraftButton) {
+    advanceFantasyDraftPicks(Number(advanceDraftButton.getAttribute('data-advance-draft')) || 1);
+    return;
+  }
+
+  const draftTournamentButton = event.target instanceof HTMLElement ? event.target.closest('[data-draft-tournament]') : null;
+  if (draftTournamentButton) {
+    stopDraftClock();
+    selectedDraftTournamentId = draftTournamentButton.getAttribute('data-draft-tournament');
+    renderApp();
+    return;
+  }
+
+  const startDraftButton = event.target instanceof HTMLElement ? event.target.closest('[data-start-fantasy-draft]') : null;
+  if (startDraftButton) {
+    startFantasyDraft();
+    return;
+  }
+
+  const draftPickButton = event.target instanceof HTMLElement ? event.target.closest('[data-draft-pick]') : null;
+  if (draftPickButton) {
+    makeDraftPick(draftPickButton.getAttribute('data-draft-pick') ?? '');
+    return;
+  }
+
+  const draftTimerButton = event.target instanceof HTMLElement ? event.target.closest('[data-draft-timer]') : null;
+  if (draftTimerButton) {
+    setFantasyDraftTimer(Number(draftTimerButton.getAttribute('data-draft-timer')) || 60);
+    return;
+  }
+
+  const autoPickToggle = event.target instanceof HTMLElement ? event.target.closest('[data-toggle-draft-autopick]') : null;
+  if (autoPickToggle) {
+    draftAutoPickEnabled = !draftAutoPickEnabled;
+    renderApp();
+    return;
+  }
+
+  const resetDraftButton = event.target instanceof HTMLElement ? event.target.closest('[data-reset-fantasy-draft]') : null;
+  if (resetDraftButton) {
+    resetFantasyDraft();
     return;
   }
 

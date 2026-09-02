@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { FantasyLeague } from '../fantasy/FantasyLeague';
 import { League } from '../league/League';
 import { UserProfile } from './UserProfile';
 
@@ -52,5 +53,27 @@ describe('User profile domain model', () => {
     expect(profile.hasRole('siteAdmin')).toBe(true);
     expect(profile.hasRole('scorekeeper')).toBe(true);
     expect(profile.hasRole('viewer')).toBe(true);
+  });
+
+  it('A registered user starts as a viewer and gains fantasy roles by creating a league', () => {
+    const profile = UserProfile.register('user-3', 'Casey Kim', 'casey@example.com');
+
+    expect(profile.getRoles()).toEqual(['viewer']);
+
+    FantasyLeague.createdBy('fantasy-1', 'Casey Invitational', profile);
+
+    expect(profile.hasRole('fantasyLeagueOwner')).toBe(true);
+    expect(profile.hasRole('fantasyParticipant')).toBe(true);
+  });
+
+  it('A UserProfile tracks commerce activity with tags instead of roles', () => {
+    const profile = UserProfile.register('user-4', 'Robin Vale', 'robin@example.com');
+
+    profile.addTag('ticketBuyer');
+    profile.addTag('merchandiseBuyer');
+    profile.addTag('ticketBuyer');
+
+    expect(profile.getTags()).toEqual(['ticketBuyer', 'merchandiseBuyer']);
+    expect(profile.getRoles()).toEqual(['viewer']);
   });
 });
