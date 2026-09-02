@@ -1,7 +1,10 @@
 export { Course } from './course/Course';
 export { Draft } from './draft/Draft';
+export { DraftAdmins } from './draft/DraftAdmins';
 export { DraftControlSettings } from './draft/DraftControlSettings';
+export { DraftRoom, RoomPick } from './draft/DraftRoom';
 export { DraftSelection } from './draft/DraftSelection';
+export { MockDraftSeries } from './draft/MockDraftSeries';
 export { DraftOrder } from './league/DraftOrder';
 export { Hole } from './course/Hole';
 export { SeasonBootstrap, SeasonBootstrapResult } from './season/SeasonBootstrap';

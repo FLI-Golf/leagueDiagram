@@ -21,6 +21,12 @@ export class FantasyLeague {
     }
   }
 
+  static createdBy(id: string, name: string, owner: UserProfile): FantasyLeague {
+    const league = new FantasyLeague(id, name, [owner]);
+    owner.addRole('fantasyLeagueOwner');
+    return league;
+  }
+
   addParticipant(participant: UserProfile): void {
     if (this.participants.length >= 6) {
       throw new Error('A fantasy league cannot have more than 6 participants.');
@@ -31,6 +37,8 @@ export class FantasyLeague {
     }
 
     this.participants.push(participant);
+    // Sticky: the role records that they have taken part, not that they are currently in a league.
+    participant.addRole('fantasyParticipant');
   }
 
   createTeamForParticipant(participantId: string, teamName: string): FantasyTeam {

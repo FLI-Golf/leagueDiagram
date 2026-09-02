@@ -1,4 +1,4 @@
-import type { AppRole, FanPost } from './UserRole';
+import type { AppRole, FanPost, UserTag } from './UserRole';
 
 export class UserProfile {
   readonly id: string;
@@ -6,6 +6,7 @@ export class UserProfile {
   email: string;
   bio: string;
   private readonly roles: Set<AppRole>;
+  private readonly tags: Set<UserTag>;
   private readonly fanPosts: FanPost[] = [];
 
   constructor(
@@ -14,12 +15,19 @@ export class UserProfile {
     email: string,
     roles: readonly AppRole[] = ['viewer'],
     bio = '',
+    tags: readonly UserTag[] = [],
   ) {
     this.id = id;
     this.displayName = displayName;
     this.email = email;
     this.bio = bio;
     this.roles = new Set<AppRole>(roles.length > 0 ? roles : ['viewer']);
+    this.tags = new Set<UserTag>(tags);
+  }
+
+  // An anonymous visitor has no profile at all; registering is what makes them a viewer.
+  static register(id: string, displayName: string, email: string, bio = ''): UserProfile {
+    return new UserProfile(id, displayName, email, ['viewer'], bio);
   }
 
   updateDisplayName(displayName: string): void {
@@ -44,6 +52,18 @@ export class UserProfile {
 
   getRoles(): readonly AppRole[] {
     return [...this.roles];
+  }
+
+  hasTag(tag: UserTag): boolean {
+    return this.tags.has(tag);
+  }
+
+  addTag(tag: UserTag): void {
+    this.tags.add(tag);
+  }
+
+  getTags(): readonly UserTag[] {
+    return [...this.tags];
   }
 
   addFanPost(body: string): FanPost {
