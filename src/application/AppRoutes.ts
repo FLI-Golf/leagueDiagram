@@ -2,7 +2,7 @@ import type { RealisticLeagueSeed } from './SeasonService';
 
 type AppRoute =
   | { kind: 'home' }
-  | { kind: 'diagram' }
+  | { kind: 'diagram'; view: string }
   | { kind: 'teams' }
   | { kind: 'team-detail'; teamId: string }
   | { kind: 'pros' }
@@ -16,7 +16,12 @@ export function resolveAppRoute(pathname = window.location.pathname): AppRoute {
   }
 
   if (normalized === '/diagram') {
-    return { kind: 'diagram' };
+    return { kind: 'diagram', view: 'overview' };
+  }
+
+  const diagramView = /^\/diagram\/([^/]+)$/.exec(normalized);
+  if (diagramView) {
+    return { kind: 'diagram', view: diagramView[1] };
   }
 
   if (normalized === '/teams') {

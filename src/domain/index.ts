@@ -11,12 +11,18 @@ export { SeasonBootstrap, SeasonBootstrapResult } from './season/SeasonBootstrap
 export { SeasonDraftManager } from './season/SeasonDraftManager';
 export { SeasonRunner } from './season/SeasonRunner';
 export { Sponsor } from './course/Sponsor';
+export { Sponsorship, SponsorshipProgram } from './sponsorship/Sponsorship';
+export type { SponsorshipScope, SponsorshipStatus, SponsorshipTier } from './sponsorship/Sponsorship';
 export { FantasyDraft, DraftPick } from './fantasy/FantasyDraft';
 export { FantasyLeague } from './fantasy/FantasyLeague';
 export { FantasyPlayer } from './fantasy/FantasyPlayer';
 export { FantasyRoster } from './fantasy/FantasyRoster';
+export { FantasyScoring } from './fantasy/FantasyScoring';
+export type { FantasyRosterEntry, FantasyStanding } from './fantasy/FantasyScoring';
 export { FantasyTeam } from './fantasy/FantasyTeam';
 export { Group } from './pipeline/Group';
+export { ContentPipeline } from './pipeline/ContentPipeline';
+export type { ContentMedia, ContentStatus, ContentSubmission } from './pipeline/ContentPipeline';
 export { ScoreEntry } from './pipeline/ScoreEntry';
 export { ScorekeeperPipeline } from './pipeline/ScorekeeperPipeline';
 export { EventSchedule, EventScheduleEntry } from './league/EventSchedule';

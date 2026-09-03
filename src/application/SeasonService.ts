@@ -7,6 +7,7 @@ import { FantasyPlayer } from '../domain/fantasy/FantasyPlayer';
 import { FantasyTeam } from '../domain/fantasy/FantasyTeam';
 import { EventSchedule } from '../domain/league/EventSchedule';
 import { SeasonBootstrap, SeasonBootstrapResult } from '../domain/season/SeasonBootstrap';
+import { Sponsorship, SponsorshipProgram } from '../domain/sponsorship/Sponsorship';
 import { Team } from '../domain/team/Team';
 import { TournamentResult } from '../domain/tournament/TournamentResult';
 import { UserProfile } from '../domain/user/UserProfile';
@@ -57,6 +58,7 @@ export type RealisticLeagueSeed = {
   courseOptions: readonly Course[];
   tournamentNames: readonly string[];
   sponsors: readonly Sponsor[];
+  sponsorshipProgram: SponsorshipProgram;
   schedule: EventSchedule;
   holeMetadata: readonly HolePrizeMetadata[];
   realLeagueTeams: readonly Team[];
@@ -86,7 +88,7 @@ export class SeasonService {
   }
 
   static canCreateSeason(user: UserProfile): boolean {
-    return user.hasRole('leagueAdmin') || user.hasRole('scorekeeper');
+    return user.hasRole('siteAdmin') || user.hasRole('leagueAdmin') || user.hasRole('scorekeeper');
   }
 
   static createNamedSeason(id: string, name: string, purseAmount = 4_000_000): RealisticLeagueSeed {
@@ -204,6 +206,19 @@ export class SeasonService {
       new Sponsor('s-11', 'Creekside Sponsor', 'Course-side branding and sponsor support.', 'https://example.com/creekside-sponsor.png'),
     ];
     const leagueSponsors = officialSponsors;
+    const [, , , mediaSponsor, technologySponsor, , socialSponsor, insightSponsor, venueSponsor, insuranceSponsor] = officialSponsors;
+    const sponsorshipProgram = new SponsorshipProgram([
+      new Sponsorship('spon-title', sponsorA, 'title', 'season', id, name || 'Season', 1_500_000, 'signed'),
+      new Sponsorship('spon-presenting', sponsorC, 'presenting', 'season', id, name || 'Season', 900_000, 'signed'),
+      new Sponsorship('spon-broadcast', mediaSponsor, 'official', 'broadcast', `${id}-broadcast`, 'Season broadcast', 200_000, 'signed'),
+      new Sponsorship('spon-technology', technologySponsor, 'official', 'season', id, 'Scoring technology', 150_000, 'loi'),
+      new Sponsorship('spon-course', venueSponsor, 'official', 'course', course.id, course.name, 100_000, 'signed'),
+      new Sponsorship('spon-hole-2', sponsorB, 'supporting', 'hole', `${course.id}-hole-2`, 'Canyon Cut', 125_000, 'signed'),
+      new Sponsorship('spon-hole-8', insightSponsor, 'supporting', 'hole', `${course.id}-hole-8`, 'After Dark Patio 21+', 60_000, 'loi'),
+      new Sponsorship('spon-pro-ricky', socialSponsor, 'supporting', 'pro', 'ricky-wysocki', 'Ricky Wysocki', 75_000, 'active'),
+      new Sponsorship('spon-pro-simon', insuranceSponsor, 'supporting', 'pro', 'simon-lizotte', 'Simon Lizotte', 65_000, 'active'),
+      new Sponsorship('spon-team-ace', insuranceSponsor, 'supporting', 'team', 'team-1', 'Ace Makers', 40_000, 'signed'),
+    ]);
     const genericObstacleSponsors = [
       new Sponsor('obs-1', 'Creekside Sponsor', 'Course-side branding for the water feature.', 'https://example.com/creekside.png'),
       new Sponsor('obs-2', 'Hazard Partners', 'Obstacle branding and on-course signage.', 'https://example.com/hazard.png'),
@@ -364,6 +379,7 @@ export class SeasonService {
       courseOptions,
       tournamentNames,
       sponsors: leagueSponsors,
+      sponsorshipProgram,
       schedule,
       holeMetadata,
       realLeagueTeams,

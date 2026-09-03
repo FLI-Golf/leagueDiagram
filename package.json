@@ -25,6 +25,7 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
-    "@picocss/pico": "^2.1.1"
+    "@picocss/pico": "^2.1.1",
+    "mermaid": "^11.17.2"
   }
 }

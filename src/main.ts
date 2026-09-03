@@ -8,6 +8,11 @@ import { MockDraftSeries } from './domain/draft/MockDraftSeries';
 import { DraftRoom } from './domain/draft/DraftRoom';
 import { Group } from './domain/pipeline/Group';
 import { generateGroupScoreSeed } from './domain/pipeline/GroupSeed';
+import { ContentPipeline } from './domain/pipeline/ContentPipeline';
+import { FantasyScoring } from './domain/fantasy/FantasyScoring';
+import type { FantasyRosterEntry } from './domain/fantasy/FantasyScoring';
+import type { SponsorshipScope, SponsorshipTier } from './domain/sponsorship/Sponsorship';
+import type { ContentMedia, ContentStatus, ContentSubmission } from './domain/pipeline/ContentPipeline';
 import { UserProfile } from './domain/user/UserProfile';
 
 let seed = SeasonService.createRealisticLeagueSeed('league-demo', '');
@@ -15,6 +20,8 @@ let selectedTournamentIndex = 0;
 let selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
 let selectedCourseNine = 'front';
 let selectedDashboardFilter = 'Manage league';
+let postStatusMessage = '';
+let seasonFormMessage = '';
 const scorekeeperStaff = ['Ava Park', 'Diego Ruiz', 'Renee Walsh', 'Maya Brooks', 'Noah Chen', 'Jamie Lopez'];
 const scorekeeperGroupLabels = ['Group A', 'Group B', 'Group C', 'Group D', 'Group E', 'Group F'];
 const defaultScorekeeperAssignments: Record<string, string> = {
@@ -72,6 +79,23 @@ if (!app) {
 
 const PRO_STORAGE_KEY = 'league-demo-pro-fan-posts';
 const USER_STORAGE_KEY = 'league-demo-current-user';
+const SEASON_STORAGE_KEY = 'league-demo-season';
+
+const getStoredSeason = (): { id: string; name: string; purseAmount: number } | null => {
+  try {
+    const raw = window.localStorage.getItem(SEASON_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed.name === 'string' && parsed.name.trim() ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const storedSeason = getStoredSeason();
+if (storedSeason) {
+  seed = SeasonService.createNamedSeason(storedSeason.id, storedSeason.name, storedSeason.purseAmount);
+  selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
+}
 
 const getStoredScorekeeperState = (): Partial<{
   assignments: Record<string, string>;
@@ -379,6 +403,7 @@ const proProfiles = [
 ];
 
 const adminProfiles = [
+  new UserProfile('super-admin', 'Super Admin', 'super@fli.example.com', ['siteAdmin'], 'Platform owner with full system and schema visibility'),
   new UserProfile('league-admin', 'League Admin', 'admin@fli.example.com', ['leagueAdmin'], 'League operations and scoring lead'),
   new UserProfile('fantasy-owner', 'Fantasy Owner', 'fantasy-owner@fli.example.com', ['fantasyLeagueOwner'], 'Controls the fantasy league and participant rules'),
 ];
@@ -404,17 +429,79 @@ const fanProfiles = [
 
 const userDirectory = [...proProfiles, ...adminProfiles, ...scorekeeperProfiles, ...fanProfiles];
 
-const getStoredPosts = (): Record<string, string[]> => {
+const escapeHtml = (value: string): string =>
+  value.replace(/[&<>"']/g, (character) => {
+    const replacements: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return replacements[character];
+  });
+
+const normalizeStoredSubmission = (entry: unknown, authorId: string, authorName: string): ContentSubmission | null => {
+  const record = (typeof entry === 'string' ? { text: entry } : entry) as Partial<ContentSubmission> | null;
+  if (!record) {
+    return null;
+  }
+
+  const media = record.media;
+  const url = typeof media?.url === 'string' ? media.url : '';
+  const isSafeMedia =
+    (media?.kind === 'image' && url.startsWith('data:image/')) || (media?.kind === 'video' && url.startsWith('data:video/'));
+  const status: ContentStatus =
+    record.status === 'pending' || record.status === 'approved' || record.status === 'rejected' ? record.status : 'approved';
+
+  return {
+    id: typeof record.id === 'string' ? record.id : `post-${Math.random().toString(36).slice(2)}`,
+    authorId: typeof record.authorId === 'string' ? record.authorId : authorId,
+    authorName: typeof record.authorName === 'string' ? record.authorName : authorName,
+    text: typeof record.text === 'string' ? record.text : '',
+    submittedAt: typeof record.submittedAt === 'string' ? record.submittedAt : '',
+    status,
+    reviewedBy: typeof record.reviewedBy === 'string' ? record.reviewedBy : undefined,
+    reviewedAt: typeof record.reviewedAt === 'string' ? record.reviewedAt : undefined,
+    reviewNote: typeof record.reviewNote === 'string' ? record.reviewNote : undefined,
+    media: isSafeMedia && media ? { kind: media.kind, url, name: String(media.name ?? '') } : undefined,
+  };
+};
+
+const loadContentPipeline = (): ContentPipeline => {
   try {
     const raw = window.localStorage.getItem(PRO_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const parsed = raw ? JSON.parse(raw) : [];
+
+    // Older builds stored a plain map of author id to text posts.
+    const entries = Array.isArray(parsed)
+      ? parsed.map((entry) => normalizeStoredSubmission(entry, '', ''))
+      : Object.entries(parsed as Record<string, unknown[]>).flatMap(([authorId, posts]) => {
+          const author = userDirectory.find((user) => user.id === authorId);
+          return (posts ?? []).map((post) => normalizeStoredSubmission(post, authorId, author?.displayName ?? authorId));
+        });
+
+    return new ContentPipeline(entries.filter((entry): entry is ContentSubmission => entry !== null));
   } catch {
-    return {};
+    return new ContentPipeline();
   }
 };
 
-const saveStoredPosts = (posts: Record<string, string[]>): void => {
-  window.localStorage.setItem(PRO_STORAGE_KEY, JSON.stringify(posts));
+let contentPipeline = loadContentPipeline();
+
+// Media is stored as a data URL, so fall back to text-only when it blows the storage quota.
+const saveContentPipeline = (): boolean => {
+  const submissions = contentPipeline.getAll();
+
+  try {
+    window.localStorage.setItem(PRO_STORAGE_KEY, JSON.stringify(submissions));
+    return true;
+  } catch {
+    try {
+      window.localStorage.setItem(
+        PRO_STORAGE_KEY,
+        JSON.stringify(submissions.map(({ media: _media, ...rest }) => rest)),
+      );
+    } catch {
+      return false;
+    }
+
+    return false;
+  }
 };
 
 const getCurrentUser = (): UserProfile => {
@@ -426,27 +513,58 @@ const setCurrentUser = (userId: string): void => {
   window.localStorage.setItem(USER_STORAGE_KEY, userId);
 };
 
-const addFanPost = (authorId: string, body: string): void => {
-  const trimmed = body.trim();
-  if (!trimmed) {
-    return;
-  }
-
+const submitFanPost = (authorId: string, body: string, media?: ContentMedia): boolean => {
   const user = userDirectory.find((entry) => entry.id === authorId);
   if (!user || !user.hasRole('pro')) {
+    return true;
+  }
+
+  contentPipeline.submit({
+    id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    authorId,
+    authorName: user.displayName,
+    text: body,
+    media,
+    submittedAt: new Date().toISOString(),
+  });
+
+  return saveContentPipeline();
+};
+
+const reviewFanPost = (submissionId: string, decision: 'approve' | 'reject', reviewer: UserProfile, note?: string): void => {
+  if (!reviewer.hasRole('leagueAdmin') && !reviewer.hasRole('siteAdmin')) {
     return;
   }
 
-  const allPosts = getStoredPosts();
-  const posts = allPosts[authorId] ?? [];
-  posts.unshift(trimmed);
-  allPosts[authorId] = posts.slice(0, 6);
-  saveStoredPosts(allPosts);
+  const reviewedAt = new Date().toISOString();
+  if (decision === 'approve') {
+    contentPipeline.approve(submissionId, reviewer.id, reviewedAt);
+  } else {
+    contentPipeline.reject(submissionId, reviewer.id, reviewedAt, note);
+  }
+
+  saveContentPipeline();
 };
 
-const getFanPostsForProfile = (profileId: string): string[] => {
-  return getStoredPosts()[profileId] ?? [];
+const readPostMedia = (file: File): Promise<ContentMedia | null> => {
+  const kind = file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : null;
+  if (!kind) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ kind, url: String(reader.result ?? ''), name: file.name });
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
 };
+
+const getFanPostsForProfile = (profileId: string): readonly ContentSubmission[] => contentPipeline.getForAuthor(profileId);
+
+const getPublishedPostsForProfile = (profileId: string): readonly ContentSubmission[] =>
+  contentPipeline.getPublished(profileId);
+
 
 const getRoute = () => resolveAppRoute(window.location.pathname);
 
@@ -506,6 +624,13 @@ const getNavIcon = (label: string): string => {
     'draft controls': `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h16"/><path d="M8 18V7l4-3 4 3v11"/><path d="M10 11h4"/></svg>`,
     'fantasy roster': `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7a3 3 0 1 1 6 0 3 3 0 0 1-6 0Z"/><path d="M3 19v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1"/><path d="M17 8.5a2.5 2.5 0 1 1 0 5"/><path d="M18 18.5a3.5 3.5 0 0 0-2.5-3.4"/></svg>`,
     'league activity': `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5h4l2-7 4 13 2-6.5h4"/></svg>`,
+    'post content': `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h9"/><path d="M5 10h6"/><path d="M5 15h5"/><path d="m14 17 6-6 2 2-6 6h-2v-2Z"/></svg>`,
+    'my team': `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 19v-1a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v1"/><circle cx="10" cy="7" r="3"/><path d="M20 19v-1a4 4 0 0 0-3-3.87"/><path d="M16 4.13a4 4 0 0 1 0 7.75"/></svg>`,
+    'my stats': `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V9"/><path d="M12 19V5"/><path d="M19 19v-7"/><path d="M3 19h18"/></svg>`,
+    photo: `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>`,
+    'content review': `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h9l3 3v13H6z"/><path d="M9 12l2 2 4-4"/></svg>`,
+    video: `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11v10H4z"/><path d="m15 11 5-3v8l-5-3z"/></svg>`,
+    library: `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10v10H4z"/><path d="M8 4h12v12"/><path d="m5 14 3-3 3 3 2-2 2 2"/></svg>`,
     default: `<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>`,
   };
 
@@ -520,11 +645,11 @@ const getRoleNavLinks = (user: UserProfile): Array<{ label: string; href: string
     { label: 'Dashboard', href: '/' },
     { label: 'Teams', href: '/teams' },
     { label: 'Pros', href: '/pros' },
-    { label: 'Diagram', href: '/diagram' },
   ];
 
-  if (user.hasRole('pro')) {
-    links.splice(2, 0, { label: 'Fan feed', href: `/pros/${user.id}` });
+  // The schema diagram is an internal platform view.
+  if (user.hasRole('siteAdmin')) {
+    links.push({ label: 'Diagram', href: '/diagram' });
   }
 
   return links;
@@ -554,6 +679,7 @@ const mockCurrentUser = (userId: string): void => {
 
 const renderRoleBadges = (user: UserProfile): string => {
   const roleLabels: Record<string, string> = {
+    siteAdmin: 'Super admin',
     pro: 'Pro',
     leagueAdmin: 'Admin',
     scorekeeper: 'Scorekeeper',
@@ -591,24 +717,33 @@ const getAssignedGroupForUser = (user: UserProfile): string | null => {
 };
 
 const getRoleMenus = (user: UserProfile): Array<{ label: string; href: string; detail: string; isActive: boolean }> => {
-  const dashboardFilterOptions = ['Approve scores', 'Manage league', 'Scorekeeper assignment', 'Scorekeeper scorecard', 'Standings', 'Fantasy league', 'Draft controls', 'Fantasy roster', 'League activity', 'Fan feed', 'Team profile', 'Player content', 'Overview'];
+  const dashboardFilterOptions = ['Approve scores', 'Manage league', 'Scorekeeper assignment', 'Scorekeeper scorecard', 'Standings', 'Fantasy league', 'Draft controls', 'Fantasy roster', 'League activity', 'Post content', 'My team', 'My stats', 'Content review', 'Overview'];
   const activeFilter = dashboardFilterOptions.includes(selectedDashboardFilter)
     ? selectedDashboardFilter
     : user.hasRole('leagueAdmin')
       ? 'Approve scores'
       : user.hasRole('scorekeeper')
         ? 'Scorekeeper scorecard'
-        : 'Overview';
+        : user.hasRole('pro')
+          ? 'Post content'
+          : 'Overview';
   const menus: Array<{ label: string; href: string; detail: string; isActive: boolean }> = [];
 
+  if (user.hasRole('siteAdmin')) {
+    menus.push({ label: 'Diagram', href: '/diagram', detail: 'Inspect the entity map behind the platform.', isActive: false });
+    menus.push({ label: 'Content review', href: '/', detail: `Approve pro posts before they go public${contentPipeline.getPending().length ? ` (${contentPipeline.getPending().length} waiting)` : ''}.`, isActive: activeFilter === 'Content review' });
+    menus.push({ label: 'Manage league', href: '/', detail: 'Create Season and Tournaments', isActive: activeFilter === 'Manage league' });
+  }
+
   if (user.hasRole('pro')) {
-    menus.push({ label: 'Fan feed', href: `/pros/${user.id}`, detail: 'Post updates and share course notes.', isActive: false });
-    menus.push({ label: 'Team profile', href: `/teams`, detail: 'Review your roster and team context.', isActive: false });
-    menus.push({ label: 'Player content', href: `/pros`, detail: 'Browse the pro roster and player pages.', isActive: false });
+    menus.push({ label: 'Post content', href: '/', detail: 'Share updates and course notes with fans.', isActive: false });
+    menus.push({ label: 'My team', href: '/', detail: 'Review your roster and teammates.', isActive: false });
+    menus.push({ label: 'My stats', href: '/', detail: 'Track your event scores this season.', isActive: false });
   }
 
   if (user.hasRole('leagueAdmin')) {
     menus.push({ label: 'Approve scores', href: '/', detail: 'Review submitted scores and approve final group results.', isActive: activeFilter === 'Approve scores' });
+    menus.push({ label: 'Content review', href: '/', detail: `Approve pro posts before they go public${contentPipeline.getPending().length ? ` (${contentPipeline.getPending().length} waiting)` : ''}.`, isActive: activeFilter === 'Content review' });
     menus.push({ label: 'Manage league', href: '/', detail: 'Create Season and Tournaments', isActive: activeFilter === 'Manage league' });
     menus.push({ label: 'Scorekeeper assignment', href: '/', detail: 'Assign scorekeepers to each group and score the round.', isActive: activeFilter === 'Scorekeeper assignment' });
   }
@@ -698,6 +833,13 @@ const getRoleAccessSummary = (user: UserProfile): string[] => {
   return access.length > 0 ? access : ['Read-only league overview'];
 };
 
+// The demo seed starts unnamed so an admin creates the first season.
+const hasSeason = (): boolean => seed.season.league.name.trim().length > 0;
+
+const getSeasonDisplayName = (): string => seed.season.league.name.trim() || 'No season created yet';
+
+const getSeasonWorkspaceTitle = (): string => (hasSeason() ? `${seed.season.league.name.trim()} season workspace` : 'Season workspace');
+
 const renderDashboardMenus = (): string => {
   const currentUser = getCurrentUser();
   const menus = getRoleMenus(currentUser);
@@ -705,7 +847,7 @@ const renderDashboardMenus = (): string => {
   return `
     <section class="panel dashboard-panel">
       <p class="eyebrow">Relevant menus</p>
-      <h2>${seed.season.league.name} season workspace</h2>
+      <h2>${getSeasonWorkspaceTitle()}</h2>
       <div class="menu-grid">
         ${menus
           .map(
@@ -738,14 +880,15 @@ const renderSeasonCreator = (): string => {
       <form data-action="create-season" class="inline-form">
         <label>
           <span>Season name</span>
-          <input type="text" name="seasonName" value="${seed.season.league.name}" placeholder="Autumn Circuit" />
+          <input type="text" name="seasonName" value="${seed.season.league.name}" placeholder="Autumn Circuit" required />
         </label>
         <label>
           <span>Purse amount</span>
           <input type="number" name="purseAmount" value="${seed.season.league.purseAmount ?? 4000000}" min="0" step="100000" />
         </label>
-        <button type="submit">Create season</button>
+        <button type="submit">${hasSeason() ? 'Update season' : 'Create season'}</button>
       </form>
+      ${seasonFormMessage ? `<p class="role-access-note">${escapeHtml(seasonFormMessage)}</p>` : ''}
     </section>
   `;
 };
@@ -1823,9 +1966,372 @@ const renderFantasyDraftPanel = (): string => {
 
       ${leaderboard}
 
+      ${renderFantasyStandings()}
+
       ${pickLog}
 
       ${seedControls}
+    </section>
+  `;
+};
+
+// Fantasy rosters come from the draft picks, so a participant only scores what they drafted.
+const getFantasyRosterEntries = (): FantasyRosterEntry[] => {
+  const rooms = fantasyDraftSeries?.getRooms() ?? [];
+  const byParticipant = new Map<string, string[]>();
+
+  rooms.forEach((room) => {
+    room.getPicks().forEach((pick) => {
+      byParticipant.set(pick.participantId, [...(byParticipant.get(pick.participantId) ?? []), pick.player.displayName]);
+    });
+  });
+
+  return [...byParticipant.entries()].map(([participantId, playerNames]) => ({ participantId, playerNames }));
+};
+
+const renderFantasyStandings = (): string => {
+  const rosters = getFantasyRosterEntries();
+  const confirmedTournamentIds = getScheduledTournamentIds().filter((tournamentId) => confirmedEventScores[tournamentId]);
+
+  if (rosters.length === 0) {
+    return `
+      <div class="assignment-summary" style="margin-top: 12px;">
+        <strong>Fantasy standings</strong>
+        <p class="role-access-note">Run the draft first — standings are built from drafted pros.</p>
+      </div>
+    `;
+  }
+
+  if (confirmedTournamentIds.length === 0) {
+    return `
+      <div class="assignment-summary" style="margin-top: 12px;">
+        <strong>Fantasy standings</strong>
+        <p class="role-access-note">Waiting on the league admin. Fantasy scores post only after an event is approved.</p>
+      </div>
+    `;
+  }
+
+  const events = confirmedTournamentIds.map((tournamentId) => getConfirmedProScores(tournamentId) ?? new Map<string, number>());
+  const standings = FantasyScoring.scoreSeason(rosters, events);
+
+  return `
+    <div class="assignment-summary" style="margin-top: 12px;">
+      <strong>Fantasy standings</strong>
+      <p class="role-access-note">From ${confirmedTournamentIds.length} approved event${confirmedTournamentIds.length === 1 ? '' : 's'}.</p>
+      <ol class="draft-pick-log">
+        ${standings
+          .map(
+            (standing, index) => `
+              <li>
+                <span class="draft-pick-slot">${index + 1}</span>
+                <strong>${escapeHtml(getDraftDisplayName(standing.participantId))}</strong>
+                <span class="draft-pick-player">${formatRelativeToPar(standing.total)} · ${standing.scoredPlayers} scored pro${standing.scoredPlayers === 1 ? '' : 's'}</span>
+              </li>
+            `,
+          )
+          .join('')}
+      </ol>
+    </div>
+  `;
+};
+
+const findProContext = (user: UserProfile) => {
+  const team = getTeamSummaries(seed).find((entry) =>
+    entry.players.some((player) => player.displayName === user.displayName),
+  );
+  const player = team?.players.find((entry) => entry.displayName === user.displayName);
+  return team && player ? { team, player } : null;
+};
+
+const renderPostMedia = (submission: ContentSubmission): string => {
+  if (!submission.media) {
+    return '';
+  }
+
+  return submission.media.kind === 'video'
+    ? `<video class="post-media" src="${submission.media.url}" controls playsinline></video>`
+    : `<img class="post-media" src="${submission.media.url}" alt="${escapeHtml(submission.media.name) || 'Posted photo'}" />`;
+};
+
+const POST_STATUS_LABELS: Record<ContentStatus, string> = {
+  pending: 'Pending league review',
+  approved: 'Published',
+  rejected: 'Not approved',
+};
+
+const renderProPostPanel = (user: UserProfile): string => {
+  const posts = getFanPostsForProfile(user.id);
+
+  return `
+    <section class="panel">
+      <p class="eyebrow">Fan feed</p>
+      <h2>Post content</h2>
+      <p class="role-access-note">Updates go to the league for review and appear on your public profile once approved.</p>
+      <form data-action="post" data-profile-id="${user.id}" class="post-form">
+        <label>
+          <span>New update</span>
+          <textarea name="content" rows="3" placeholder="Share a practice round note, a highlight, or a fan shoutout."></textarea>
+        </label>
+        <div class="post-media-row">
+          <label class="post-media-button">
+            <input type="file" name="photo" accept="image/*" capture="environment" />
+            <span>${getMenuIcon('photo')}Photo</span>
+          </label>
+          <label class="post-media-button">
+            <input type="file" name="video" accept="video/*" capture="environment" />
+            <span>${getMenuIcon('video')}Video</span>
+          </label>
+          <label class="post-media-button">
+            <input type="file" name="library" accept="image/*,video/*" />
+            <span>${getMenuIcon('library')}From library</span>
+          </label>
+        </div>
+        <p class="post-media-status" data-post-media-status>Text only. Attach a photo or video from your phone if you want.</p>
+        ${postStatusMessage ? `<p class="post-media-status is-warning">${escapeHtml(postStatusMessage)}</p>` : ''}
+        <button type="submit">Submit for review</button>
+      </form>
+      <ul class="post-list">
+        ${posts.length
+          ? posts
+              .map((post) => {
+                const timestamp = post.submittedAt ? new Date(post.submittedAt).toLocaleString() : '';
+                return `
+                  <li class="post-item">
+                    <div class="post-item-header">
+                      ${timestamp ? `<p class="post-timestamp">${timestamp}</p>` : '<span></span>'}
+                      <span class="post-status post-status--${post.status}">${POST_STATUS_LABELS[post.status]}</span>
+                    </div>
+                    ${post.text ? `<p>${escapeHtml(post.text)}</p>` : ''}
+                    ${renderPostMedia(post)}
+                    ${post.reviewNote ? `<p class="post-review-note">League note: ${escapeHtml(post.reviewNote)}</p>` : ''}
+                  </li>
+                `;
+              })
+              .join('')
+          : '<li class="post-item">No updates posted yet.</li>'}
+      </ul>
+    </section>
+  `;
+};
+
+const renderProTeamPanel = (user: UserProfile): string => {
+  const context = findProContext(user);
+
+  if (!context) {
+    return `
+      <section class="panel">
+        <p class="eyebrow">Team</p>
+        <h2>My team</h2>
+        <p class="role-access-note">You are not assigned to a league team yet.</p>
+      </section>
+    `;
+  }
+
+  const { team } = context;
+
+  return `
+    <section class="panel">
+      <p class="eyebrow">Team</p>
+      <h2>${team.name}</h2>
+      <div class="team-grid">
+        ${team.players
+          .map(
+            (player) => `
+              <article class="player-card">
+                <h3>${player.displayName}${player.displayName === user.displayName ? ' (you)' : ''}</h3>
+                <p><strong>Division:</strong> ${player.gender === 'male' ? 'MPO' : 'FPO'}</p>
+                <p><strong>Email:</strong> ${player.email}</p>
+                <a class="secondary-link" href="/pros/${player.routeId}">Open pro profile</a>
+              </article>
+            `,
+          )
+          .join('')}
+      </div>
+      <p class="role-access-note">Current team score: <strong>${getTeamScoreLabel(team.name)}</strong></p>
+    </section>
+  `;
+};
+
+const renderProStatsPanel = (user: UserProfile): string => {
+  const events = seed.schedule.getEvents();
+  const rows = events
+    .map((entry, index) => {
+      const scores = getConfirmedProScores(entry.result.id);
+      const score = scores?.get(user.displayName);
+      return {
+        index,
+        name: entry.result.name,
+        date: entry.date,
+        score: typeof score === 'number' ? score : null,
+      };
+    })
+    .filter((row) => row.score !== null);
+
+  const seasonTotal = rows.reduce((sum, row) => sum + (row.score ?? 0), 0);
+
+  return `
+    <section class="panel">
+      <p class="eyebrow">Performance</p>
+      <h2>My stats</h2>
+      ${rows.length
+        ? `
+          <ul class="list-block">
+            ${rows
+              .map(
+                (row) => `
+                  <li>
+                    <strong>${row.date}</strong> — ${row.name}
+                    <span class="tee-time-badge">${formatRelativeToPar(row.score ?? 0)}</span>
+                  </li>
+                `,
+              )
+              .join('')}
+          </ul>
+          <p class="role-access-note">Season total: <strong>${formatRelativeToPar(seasonTotal)}</strong> across ${rows.length} confirmed event${rows.length === 1 ? '' : 's'}.</p>
+        `
+        : '<p class="role-access-note">No confirmed event scores yet. Stats appear once an admin approves a round.</p>'}
+    </section>
+  `;
+};
+
+const renderContentReviewPanel = (): string => {
+  const pending = contentPipeline.getPending();
+  const reviewed = contentPipeline.getAll().filter((submission) => submission.status !== 'pending').slice(0, 6);
+
+  return `
+    <section class="panel">
+      <p class="eyebrow">Content pipeline</p>
+      <h2>Approve pro content</h2>
+      <p class="role-access-note">Pro updates stay private until the league approves them.</p>
+      <ul class="post-list">
+        ${pending.length
+          ? pending
+              .map(
+                (submission) => `
+                  <li class="post-item">
+                    <div class="post-item-header">
+                      <p class="post-timestamp">${escapeHtml(submission.authorName)} · ${submission.submittedAt ? new Date(submission.submittedAt).toLocaleString() : ''}</p>
+                      <span class="post-status post-status--pending">${POST_STATUS_LABELS.pending}</span>
+                    </div>
+                    ${submission.text ? `<p>${escapeHtml(submission.text)}</p>` : ''}
+                    ${renderPostMedia(submission)}
+                    <form data-action="review-post" data-submission-id="${submission.id}" class="post-review-form">
+                      <label>
+                        <span>Note to the pro (optional)</span>
+                        <input type="text" name="reviewNote" placeholder="Reason if you send it back." />
+                      </label>
+                      <div class="post-review-actions">
+                        <button type="submit" name="decision" value="approve">Approve &amp; publish</button>
+                        <button type="submit" name="decision" value="reject" class="secondary-button">Reject</button>
+                      </div>
+                    </form>
+                  </li>
+                `,
+              )
+              .join('')
+          : '<li class="post-item">Nothing waiting for review.</li>'}
+      </ul>
+
+      ${reviewed.length
+        ? `
+          <h3>Recent decisions</h3>
+          <ul class="list-block">
+            ${reviewed
+              .map(
+                (submission) => `
+                  <li>
+                    <strong>${escapeHtml(submission.authorName)}</strong> — ${POST_STATUS_LABELS[submission.status]}
+                    ${submission.reviewNote ? `<span class="course-assignment">· ${escapeHtml(submission.reviewNote)}</span>` : ''}
+                  </li>
+                `,
+              )
+              .join('')}
+          </ul>
+        `
+        : ''}
+    </section>
+  `;
+};
+
+const renderProDashboard = (user: UserProfile): string => {
+  const proFilters = ['Post content', 'My team', 'My stats'];
+  const activeFilter = proFilters.includes(selectedDashboardFilter) ? selectedDashboardFilter : 'Post content';
+
+  const panel =
+    activeFilter === 'My team'
+      ? renderProTeamPanel(user)
+      : activeFilter === 'My stats'
+        ? renderProStatsPanel(user)
+        : renderProPostPanel(user);
+
+  return `
+    <main class="page-shell">
+      <header class="hero">
+        <div class="title-group">
+          <p class="eyebrow">Dashboard</p>
+          <div class="title-with-badges">
+            <h1>${getSeasonDisplayName()}</h1>
+            ${renderRoleBadges(user)}
+          </div>
+        </div>
+      </header>
+
+      <section class="dashboard-layout">
+        <div class="dashboard-column">${renderDashboardMenus()}</div>
+        <div class="dashboard-column">${renderLoginPane()}</div>
+      </section>
+
+      ${panel}
+    </main>
+  `;
+};
+
+const SPONSORSHIP_SCOPE_LABELS: Record<SponsorshipScope, string> = {
+  season: 'Season',
+  tournament: 'Tournament',
+  course: 'Course',
+  hole: 'Hole',
+  pro: 'Pro',
+  team: 'Team',
+  broadcast: 'Broadcast',
+};
+
+const SPONSORSHIP_TIER_LABELS: Record<SponsorshipTier, string> = {
+  title: 'Title sponsor',
+  presenting: 'Presenting sponsor',
+  official: 'Official partner',
+  supporting: 'Supporting partner',
+};
+
+const renderSponsorshipPanel = (): string => {
+  const program = seed.sponsorshipProgram;
+  const title = program.getTitleSponsorship();
+  const others = program.getRanked().filter((entry) => entry.id !== title?.id);
+
+  return `
+    <section class="panel">
+      <p class="eyebrow">Sponsorship</p>
+      <h2>Season sponsors</h2>
+      ${title
+        ? `<p class="role-access-note">Title sponsor: <strong>${escapeHtml(title.sponsor.name)}</strong> — $${title.amount.toLocaleString()} for ${escapeHtml(title.scopeName)}.</p>`
+        : '<p class="role-access-note">No title sponsor signed yet.</p>'}
+      <p class="role-access-note">Committed sponsorship value: <strong>$${program.getTotalValue().toLocaleString()}</strong>.</p>
+      ${title && !program.isTitleSponsorPrincipal()
+        ? '<p class="role-access-note">Warning: another partner is committing more than the title sponsor.</p>'
+        : ''}
+      <ul class="list-block sponsorship-list">
+        ${others
+          .map(
+            (entry) => `
+              <li>
+                <span class="sponsor-scope sponsor-scope--${entry.scope}">${SPONSORSHIP_SCOPE_LABELS[entry.scope]}</span>
+                <strong>${escapeHtml(entry.sponsor.name)}</strong> — ${escapeHtml(entry.scopeName)}
+                <span class="course-assignment">· ${SPONSORSHIP_TIER_LABELS[entry.tier]} · $${entry.amount.toLocaleString()} · ${entry.status.toUpperCase()}</span>
+              </li>
+            `,
+          )
+          .join('')}
+      </ul>
     </section>
   `;
 };
@@ -1834,6 +2340,40 @@ const renderHomePage = (): string => {
   const currentUser = getCurrentUser();
   const selectedFilter = selectedDashboardFilter || 'Manage league';
 
+  const isProOnly =
+    currentUser.hasRole('pro') &&
+    !currentUser.hasRole('leagueAdmin') &&
+    !currentUser.hasRole('scorekeeper') &&
+    !currentUser.hasRole('fantasyLeagueOwner') &&
+    !currentUser.hasRole('fantasyParticipant');
+
+  if (isProOnly) {
+    return renderProDashboard(currentUser);
+  }
+
+  if (selectedFilter === 'Content review' && (currentUser.hasRole('leagueAdmin') || currentUser.hasRole('siteAdmin'))) {
+    return `
+      <main class="page-shell">
+        <header class="hero">
+          <div class="title-group">
+            <p class="eyebrow">Dashboard</p>
+            <div class="title-with-badges">
+              <h1>${getSeasonDisplayName()}</h1>
+              ${renderRoleBadges(currentUser)}
+            </div>
+          </div>
+        </header>
+
+        <section class="dashboard-layout">
+          <div class="dashboard-column">${renderDashboardMenus()}</div>
+          <div class="dashboard-column">${renderLoginPane()}</div>
+        </section>
+
+        ${renderContentReviewPanel()}
+      </main>
+    `;
+  }
+
   if (selectedFilter === 'Approve scores' || selectedFilter === 'Scorekeeper scorecard' || selectedFilter === 'Standings' || (currentUser.hasRole('scorekeeper') && !!getAssignedGroupForUser(currentUser))) {
     return `
       <main class="page-shell">
@@ -1841,7 +2381,7 @@ const renderHomePage = (): string => {
           <div class="title-group">
             <p class="eyebrow">Dashboard</p>
             <div class="title-with-badges">
-              <h1>${seed.season.league.name}</h1>
+              <h1>${getSeasonDisplayName()}</h1>
               ${renderRoleBadges(currentUser)}
             </div>
           </div>
@@ -1864,7 +2404,7 @@ const renderHomePage = (): string => {
           <div class="title-group">
             <p class="eyebrow">Dashboard</p>
             <div class="title-with-badges">
-              <h1>${seed.season.league.name}</h1>
+              <h1>${getSeasonDisplayName()}</h1>
               ${renderRoleBadges(currentUser)}
             </div>
           </div>
@@ -1957,7 +2497,7 @@ const renderHomePage = (): string => {
         <div class="title-group">
           <p class="eyebrow">Dashboard</p>
           <div class="title-with-badges">
-            <h1>${seed.season.league.name}</h1>
+            <h1>${getSeasonDisplayName()}</h1>
             ${renderRoleBadges(currentUser)}
           </div>
         </div>
@@ -1972,9 +2512,10 @@ const renderHomePage = (): string => {
 
       <section class="panel">
         <h2>Season setup &amp; tournaments</h2>
-        <p class="role-access-note">Current season: <strong>${seed.season.league.name}</strong></p>
+        <p class="role-access-note">Current season: <strong>${getSeasonDisplayName()}</strong></p>
+        ${hasSeason() ? '' : '<p class="role-access-note">Name a season with the Create season form above to lock in this schedule.</p>'}
         <p class="role-access-note">Purse: <strong>$${(seed.season.league.purseAmount ?? 4000000).toLocaleString()}</strong></p>
-        <p class="role-access-note">Tee times begin at 3:00 PM PST and run every 10 minutes.</p>
+        <p class="role-access-note">Tee times begin at 3:00 PM PST and run every 10 minutes until the last group.</p>
         <ul class="list-block">
           ${tournamentEntries
             .map(
@@ -1999,6 +2540,8 @@ const renderHomePage = (): string => {
         </ul>
         <p class="role-access-note">Scorekeeping is the next phase after tournament timing is locked in.</p>
       </section>
+
+      ${renderSponsorshipPanel()}
 
       <section class="panel">
         <div class="section-header-row">
@@ -2297,6 +2840,8 @@ const renderProDetailPage = (playerId: string): string => {
   }
 
   const reserveReason = 'reason' in player ? player.reason : null;
+  const profileUser = userDirectory.find((entry) => entry.displayName === player.displayName);
+  const publishedPosts = profileUser ? getPublishedPostsForProfile(profileUser.id) : [];
 
   return `
     <main class="page-shell">
@@ -2317,58 +2862,476 @@ const renderProDetailPage = (playerId: string): string => {
           ${reserveReason ? `<li><strong>Reserve reason:</strong> ${reserveReason}</li>` : '<li><strong>Route ID:</strong> ' + player.routeId + '</li>'}
         </ul>
       </section>
+
+      <section class="panel">
+        <h2>Fan feed</h2>
+        <ul class="post-list">
+          ${publishedPosts.length
+            ? publishedPosts
+                .map(
+                  (post) => `
+                    <li class="post-item">
+                      ${post.submittedAt ? `<p class="post-timestamp">${new Date(post.submittedAt).toLocaleString()}</p>` : ''}
+                      ${post.text ? `<p>${escapeHtml(post.text)}</p>` : ''}
+                      ${renderPostMedia(post)}
+                    </li>
+                  `,
+                )
+                .join('')
+            : '<li class="post-item">No published updates yet.</li>'}
+        </ul>
+      </section>
     </main>
   `;
 };
 
-const renderDiagramPage = (): string => {
-  const nodes = [
-    {
-      name: 'UserProfile',
-      summary: 'People in the league and fantasy system.',
-      connections: ['UserLeague', 'FantasyLeague', 'Team'],
-    },
-    {
-      name: 'UserLeague',
-      summary: 'The league membership that owns invites, participants, and draft orders.',
-      connections: ['UserProfile', 'DraftOrder', 'LeagueInvite'],
-    },
-    {
-      name: 'SeasonBootstrapResult',
-      summary: 'The assembled season seed with user league, fantasy teams, and draft orders.',
-      connections: ['UserLeague', 'FantasyTeam', 'DraftOrder'],
-    },
-    {
-      name: 'FantasyTeam',
-      summary: 'Fantasy managers and player rosters.',
-      connections: ['FantasyPlayer', 'FantasyLeague'],
-    },
-    {
-      name: 'TournamentResult',
-      summary: 'A tournament event with ranked scorecards and point totals.',
-      connections: ['Scorecard', 'LeagueTable', 'EventSchedule'],
-    },
-    {
-      name: 'LeagueTable',
-      summary: 'Aggregates all tournament results into cumulative standings.',
-      connections: ['TournamentResult', 'Scorecard'],
-    },
-    {
-      name: 'Course',
-      summary: 'A round layout with holes and sponsor relationships.',
-      connections: ['Hole', 'Sponsor'],
-    },
-    {
-      name: 'Hole',
-      summary: 'Each hole belongs to a course and can have a sponsor and prize metadata.',
-      connections: ['Course', 'Sponsor'],
-    },
-    {
-      name: 'EventSchedule',
-      summary: 'Calendarized tournament results across a season.',
-      connections: ['TournamentResult', 'LeagueTable'],
-    },
-  ];
+type DiagramNode = { name: string; summary: string; connections: string[] };
+
+type DiagramGroup = { id: string; label: string; fill: string; stroke: string; color: string; members: string[] };
+
+const DIAGRAM_GROUPS: DiagramGroup[] = [
+  {
+    id: 'people',
+    label: 'People & teams',
+    fill: '#1e1b4b',
+    stroke: '#818cf8',
+    color: '#e0e7ff',
+    members: ['UserProfile', 'Player', 'Team', 'LeagueMembership', 'LeagueInvite'],
+  },
+  {
+    id: 'league',
+    label: 'League & season',
+    fill: '#0c2340',
+    stroke: '#60a5fa',
+    color: '#dbeafe',
+    members: ['UserLeague', 'League', 'Season', 'SeasonBootstrapResult', 'EventSchedule', 'TournamentResult', 'LeagueTable', 'Standing'],
+  },
+  {
+    id: 'course',
+    label: 'Course',
+    fill: '#052e1b',
+    stroke: '#34d399',
+    color: '#d1fae5',
+    members: ['Course', 'Hole', 'Sponsor'],
+  },
+  {
+    id: 'sponsorship',
+    label: 'Sponsorship',
+    fill: '#422006',
+    stroke: '#fb923c',
+    color: '#ffedd5',
+    members: ['SponsorshipProgram', 'Sponsorship'],
+  },
+  {
+    id: 'content',
+    label: 'Content pipeline',
+    fill: '#2e1065',
+    stroke: '#c084fc',
+    color: '#f3e8ff',
+    members: ['ContentPipeline', 'ContentSubmission'],
+  },
+  {
+    id: 'scoring',
+    label: 'Scoring pipeline',
+    fill: '#3f2a06',
+    stroke: '#fbbf24',
+    color: '#fef3c7',
+    members: ['ScorekeeperPipeline', 'Group', 'ScoreEntry', 'Scorecard', 'Round'],
+  },
+  {
+    id: 'fantasy',
+    label: 'Fantasy & draft',
+    fill: '#083344',
+    stroke: '#22d3ee',
+    color: '#cffafe',
+    members: ['FantasyLeague', 'FantasyTeam', 'FantasyRoster', 'FantasyPlayer', 'FantasyDraft', 'FantasyScoring', 'DraftRoom', 'DraftOrder', 'DraftSelection', 'DraftControlSettings'],
+  },
+];
+
+const getDiagramGroup = (name: string): DiagramGroup | undefined =>
+  DIAGRAM_GROUPS.find((group) => group.members.includes(name));
+
+// Relationships that hold a collection; everything else is treated as one-to-one.
+const DIAGRAM_MANY_EDGES = new Set([
+  'Season>EventSchedule',
+  'Season>SponsorshipProgram',
+  'SeasonBootstrapResult>DraftOrder',
+  'SeasonBootstrapResult>FantasyTeam',
+  'EventSchedule>TournamentResult',
+  'TournamentResult>Scorecard',
+  'TournamentResult>Team',
+  'TournamentResult>FantasyScoring',
+  'LeagueTable>TournamentResult',
+  'LeagueTable>Standing',
+  'League>Season',
+  'UserLeague>LeagueMembership',
+  'UserLeague>LeagueInvite',
+  'UserLeague>DraftOrder',
+  'UserLeague>UserProfile',
+  'UserProfile>ContentSubmission',
+  'UserProfile>FantasyLeague',
+  'Team>Player',
+  'Player>Scorecard',
+  'Course>Hole',
+  'Hole>Sponsor',
+  'Course>Sponsorship',
+  'Hole>Sponsorship',
+  'Player>Sponsorship',
+  'Team>Sponsorship',
+  'SponsorshipProgram>Sponsorship',
+  'ContentPipeline>ContentSubmission',
+  'ScorekeeperPipeline>ScoreEntry',
+  'ScorekeeperPipeline>Group',
+  'Group>Team',
+  'Group>ScoreEntry',
+  'FantasyLeague>FantasyTeam',
+  'FantasyRoster>FantasyPlayer',
+  'FantasyDraft>DraftRoom',
+  'FantasyDraft>FantasyTeam',
+  'DraftRoom>DraftSelection',
+  'FantasyScoring>FantasyTeam',
+  'FantasyScoring>Scorecard',
+]);
+
+const isManyEdge = (from: string, to: string): boolean => DIAGRAM_MANY_EDGES.has(`${from}>${to}`);
+
+const buildDiagramDefinition = (nodes: DiagramNode[]): string => {
+  const seen = new Set<string>();
+  const lines = ['graph LR'];
+  const linkStyles: string[] = [];
+
+  nodes.forEach((node) => {
+    lines.push(`  ${node.name}["${node.name}"]`);
+  });
+
+  nodes.forEach((node) => {
+    node.connections.forEach((connection) => {
+      const key = [node.name, connection].sort().join('--');
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+
+      // Draw the edge from whichever side owns the collection so the label reads correctly.
+      const reversed = !isManyEdge(node.name, connection) && isManyEdge(connection, node.name);
+      const from = reversed ? connection : node.name;
+      const to = reversed ? node.name : connection;
+      const many = isManyEdge(from, to);
+      const stroke = getDiagramGroup(from)?.stroke ?? '#94a3b8';
+
+      lines.push(`  ${from} ---|"${many ? 'has many' : 'has one'}"| ${to}`);
+      linkStyles.push(
+        `  linkStyle ${linkStyles.length} stroke:${stroke},stroke-width:${many ? '2.4' : '1.4'}px${many ? '' : ',stroke-dasharray:6 4'};`,
+      );
+    });
+  });
+
+  const documented = new Set(nodes.map((node) => node.name));
+  const everyName = new Set([...documented, ...nodes.flatMap((node) => node.connections)]);
+
+  lines.push('  classDef fallback fill:#0f172a,stroke:#94a3b8,stroke-width:1.2px,color:#cbd5e1;');
+  DIAGRAM_GROUPS.forEach((group) => {
+    lines.push(`  classDef ${group.id} fill:${group.fill},stroke:${group.stroke},stroke-width:1.6px,color:${group.color};`);
+  });
+
+  const byGroup = new Map<string, string[]>();
+  everyName.forEach((name) => {
+    const groupId = getDiagramGroup(name)?.id ?? 'fallback';
+    byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), name]);
+  });
+
+  byGroup.forEach((members, groupId) => {
+    lines.push(`  class ${members.join(',')} ${groupId};`);
+  });
+
+  return [...lines, ...linkStyles].join('\n');
+};
+
+const renderDiagramLegend = (nodes: DiagramNode[]): string => {
+  const present = new Set([...nodes.map((node) => node.name), ...nodes.flatMap((node) => node.connections)]);
+  const groups = DIAGRAM_GROUPS.filter((group) => group.members.some((member) => present.has(member)));
+
+  return `
+    <ul class="diagram-legend">
+      ${groups
+        .map(
+          (group) => `
+            <li>
+              <span class="legend-swatch" style="background:${group.fill};border-color:${group.stroke};"></span>
+              ${group.label}
+            </li>
+          `,
+        )
+        .join('')}
+      <li><span class="legend-line legend-line--many"></span>has many (a collection)</li>
+      <li><span class="legend-line legend-line--one"></span>has one (single reference)</li>
+    </ul>
+  `;
+};
+
+const renderDiagramCanvas = (nodes: DiagramNode[]): string =>
+  `<div class="diagram-canvas" data-mermaid="${escapeHtml(buildDiagramDefinition(nodes))}">Loading diagram…</div>`;
+
+const getEntitySummaries = (): Map<string, string> => {
+  const summaries = new Map<string, string>();
+  DIAGRAM_VIEWS.forEach((view) => {
+    view.nodes.forEach((node) => {
+      if (!summaries.has(node.name)) {
+        summaries.set(node.name, node.summary);
+      }
+    });
+  });
+  return summaries;
+};
+
+// Mermaid has no native tooltip in strict mode, so annotate the rendered nodes directly.
+const annotateDiagramNodes = (container: HTMLElement): void => {
+  const summaries = getEntitySummaries();
+  const svgNamespace = 'http://www.w3.org/2000/svg';
+
+  container.querySelectorAll('g.node').forEach((node) => {
+    const label = node.textContent?.trim() ?? '';
+    const summary = summaries.get(label);
+    if (!summary) {
+      return;
+    }
+
+    node.classList.add('has-info');
+    (node as SVGGElement).dataset.infoTitle = label;
+    (node as SVGGElement).dataset.info = summary;
+
+    const box = (node as SVGGElement).getBBox();
+    const badge = document.createElementNS(svgNamespace, 'g');
+    badge.setAttribute('class', 'node-info-badge');
+    badge.setAttribute('transform', `translate(${box.x + box.width - 6}, ${box.y + 6})`);
+
+    const circle = document.createElementNS(svgNamespace, 'circle');
+    circle.setAttribute('r', '8');
+
+    const glyph = document.createElementNS(svgNamespace, 'text');
+    glyph.setAttribute('text-anchor', 'middle');
+    glyph.setAttribute('dy', '4');
+    glyph.textContent = 'i';
+
+    badge.append(circle, glyph);
+    node.append(badge);
+  });
+};
+
+const getDiagramTooltip = (): HTMLElement => {
+  const existing = document.getElementById('diagram-tooltip');
+  if (existing) {
+    return existing;
+  }
+
+  const tooltip = document.createElement('div');
+  tooltip.id = 'diagram-tooltip';
+  tooltip.className = 'diagram-tooltip';
+  tooltip.hidden = true;
+  document.body.append(tooltip);
+  return tooltip;
+};
+
+const showDiagramTooltip = (target: HTMLElement | SVGElement, title: string, body: string): void => {
+  const tooltip = getDiagramTooltip();
+  tooltip.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(body)}</span>`;
+  tooltip.hidden = false;
+
+  const bounds = target.getBoundingClientRect();
+  const tooltipBounds = tooltip.getBoundingClientRect();
+  const left = Math.min(
+    Math.max(12, bounds.left + bounds.width / 2 - tooltipBounds.width / 2),
+    window.innerWidth - tooltipBounds.width - 12,
+  );
+  const above = bounds.top - tooltipBounds.height - 12;
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${above > 12 ? above : bounds.bottom + 12}px`;
+};
+
+const hideDiagramTooltip = (): void => {
+  const tooltip = document.getElementById('diagram-tooltip');
+  if (tooltip) {
+    tooltip.hidden = true;
+  }
+};
+
+// Mermaid is heavy, so it only loads when the diagram page is on screen.
+const renderMermaidDiagrams = async (): Promise<void> => {
+  const containers = Array.from(document.querySelectorAll('[data-mermaid]')) as HTMLElement[];
+  if (containers.length === 0) {
+    return;
+  }
+
+  const { default: mermaid } = await import('mermaid');
+  mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict', flowchart: { curve: 'basis' } });
+
+  await Promise.all(
+    containers.map(async (container, index) => {
+      const definition = container.dataset.mermaid;
+      if (!definition) {
+        return;
+      }
+
+      try {
+        const { svg } = await mermaid.render(`mermaid-diagram-${index}-${Date.now()}`, definition);
+        container.innerHTML = svg;
+        annotateDiagramNodes(container);
+      } catch {
+        container.textContent = 'The diagram could not be rendered.';
+      }
+    }),
+  );
+};
+
+const renderRestrictedPage = (pageName: string): string => {
+  const user = getCurrentUser();
+
+  return `
+    <main class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Restricted</p>
+          <h1>${escapeHtml(pageName)}</h1>
+        </div>
+        ${renderNav(user, 'home')}
+      </header>
+
+      <section class="panel">
+        <h2>Super admin only</h2>
+        <p class="role-access-note">Switch to the Super Admin account to open this view.</p>
+        ${renderLoginPane()}
+      </section>
+    </main>
+  `;
+};
+
+type DiagramView = { slug: string; label: string; title: string; intro: string; nodes: DiagramNode[] };
+
+const DIAGRAM_VIEWS: DiagramView[] = [
+  {
+    slug: 'overview',
+    label: 'Overview',
+    title: 'Full entity map',
+    intro:
+      'Everything hangs off the season: the season schedules tournaments, tournaments are played on courses by teams, teams are made of pros, and the approved results feed the standings and the fantasy leagues. Both pipelines gate what becomes official — scores need admin approval, and pro posts need content approval before going public.',
+    nodes: [
+      { name: 'Season', summary: 'The parent record: purse, league reference, schedule, and sponsorship program.', connections: ['EventSchedule', 'SponsorshipProgram', 'UserLeague'] },
+      { name: 'SponsorshipProgram', summary: 'Season sponsorships, starting with the single title sponsor.', connections: ['Sponsorship'] },
+      { name: 'Sponsorship', summary: 'One agreement: sponsor, tier, scope, amount, and status.', connections: ['Sponsor'] },
+      { name: 'UserLeague', summary: 'The league membership that owns invites, participants, and draft orders.', connections: ['UserProfile', 'LeagueInvite', 'DraftOrder'] },
+      { name: 'EventSchedule', summary: 'Calendarized tournaments across a season.', connections: ['TournamentResult'] },
+      { name: 'TournamentResult', summary: 'One tournament: the course it is played on, the teams entered, and the ranked scorecards.', connections: ['Course', 'Team', 'Scorecard', 'LeagueTable', 'FantasyScoring'] },
+      { name: 'ScorekeeperPipeline', summary: 'Collects hole scores per group and blocks approval until the card is complete.', connections: ['Group', 'ScoreEntry', 'TournamentResult'] },
+      { name: 'Course', summary: 'The layout a tournament is played on.', connections: ['Hole'] },
+      { name: 'Hole', summary: 'Distance, basket placement, and sponsor branding for one hole.', connections: ['Sponsor'] },
+      { name: 'Team', summary: 'A mixed pair of pros entered in the tournament.', connections: ['Player'] },
+      { name: 'Player', summary: 'A pro on a team, with scorecards and an account.', connections: ['Scorecard', 'UserProfile'] },
+      { name: 'UserProfile', summary: 'The account behind a pro, admin, scorekeeper, or fan.', connections: ['ContentSubmission'] },
+      { name: 'ContentPipeline', summary: 'Holds pro posts until a league or super admin approves them.', connections: ['ContentSubmission'] },
+      { name: 'LeagueTable', summary: 'Cumulative standings rolled up from every approved event.', connections: ['Standing'] },
+      { name: 'FantasyScoring', summary: 'Derives fantasy standings from approved event scores.', connections: ['FantasyTeam'] },
+      { name: 'FantasyTeam', summary: 'A fantasy manager and the pros they drafted.', connections: ['FantasyPlayer'] },
+      { name: 'FantasyPlayer', summary: 'A league pro wrapped with fantasy scoring.', connections: ['Player'] },
+      { name: 'FantasyLeague', summary: 'The fantasy competition that owns teams and the draft.', connections: ['FantasyTeam', 'FantasyDraft'] },
+    ],
+  },
+  {
+    slug: 'pros',
+    label: 'Pros',
+    title: 'Pro players and their content',
+    intro: 'A pro is a player on a league team. Their posts enter the content pipeline and only reach the public profile once approved.',
+    nodes: [
+      { name: 'UserProfile', summary: 'The signed-in pro account and its roles.', connections: ['Player', 'ContentSubmission'] },
+      { name: 'Player', summary: 'The competitor record placed on a team roster.', connections: ['Team', 'Scorecard', 'Standing'] },
+      { name: 'Team', summary: 'A mixed pair of pros that scores together.', connections: ['Player', 'TournamentResult'] },
+      { name: 'Scorecard', summary: 'Hole-by-hole results for one pro in one round.', connections: ['Round', 'TournamentResult'] },
+      { name: 'ContentSubmission', summary: 'A post with optional photo or video, plus its review status.', connections: ['ContentPipeline', 'UserProfile'] },
+      { name: 'ContentPipeline', summary: 'Approval gate before a post is public.', connections: ['ContentSubmission'] },
+    ],
+  },
+  {
+    slug: 'league',
+    label: 'League',
+    title: 'League, season, and schedule',
+    intro: 'A user league owns memberships and invites. Bootstrapping a season produces the schedule, tournaments, and standings table.',
+    nodes: [
+      { name: 'UserLeague', summary: 'Membership container for participants and invites.', connections: ['LeagueMembership', 'LeagueInvite', 'DraftOrder'] },
+      { name: 'Season', summary: 'A named season with its purse, league reference, and title sponsor.', connections: ['League', 'EventSchedule', 'SponsorshipProgram'] },
+      { name: 'SponsorshipProgram', summary: 'Season sponsorships, starting with the single title sponsor.', connections: ['Sponsorship'] },
+      { name: 'Sponsorship', summary: 'One agreement: sponsor, tier, scope, amount, and status.', connections: ['Sponsor'] },
+      { name: 'SeasonBootstrapResult', summary: 'The assembled season seed handed to the app.', connections: ['UserLeague', 'Season', 'EventSchedule'] },
+      { name: 'EventSchedule', summary: 'Dated tournament entries across the season.', connections: ['TournamentResult'] },
+      { name: 'TournamentResult', summary: 'Ranked results for one event.', connections: ['LeagueTable', 'Scorecard'] },
+      { name: 'LeagueTable', summary: 'Cumulative standings rolled up from every event.', connections: ['TournamentResult', 'Standing'] },
+    ],
+  },
+  {
+    slug: 'fantasy',
+    label: 'Fantasy',
+    title: 'Fantasy leagues and drafts',
+    intro: 'Fantasy owners run a draft that assigns fantasy players to rosters, scored from the same tournament results.',
+    nodes: [
+      { name: 'FantasyLeague', summary: 'The fantasy competition and its owner settings.', connections: ['FantasyTeam', 'FantasyDraft'] },
+      { name: 'FantasyTeam', summary: 'One manager and the roster they drafted.', connections: ['FantasyRoster', 'FantasyLeague'] },
+      { name: 'FantasyRoster', summary: 'The drafted set of fantasy players.', connections: ['FantasyPlayer'] },
+      { name: 'FantasyPlayer', summary: 'A league pro wrapped with fantasy scoring.', connections: ['Player', 'Scorecard'] },
+      { name: 'FantasyScoring', summary: 'Turns admin-approved event scores into fantasy standings for each participant.', connections: ['TournamentResult', 'Scorecard', 'FantasyTeam', 'FantasyDraft'] },
+      { name: 'TournamentResult', summary: 'The approved event scores that fantasy totals are derived from.', connections: ['Scorecard'] },
+      { name: 'FantasyDraft', summary: 'Draft rounds, picks, and the resulting rosters.', connections: ['DraftRoom', 'DraftOrder', 'FantasyTeam'] },
+      { name: 'DraftRoom', summary: 'Live draft state with pick timers and auto picks.', connections: ['DraftSelection', 'DraftControlSettings'] },
+    ],
+  },
+  {
+    slug: 'course',
+    label: 'Course',
+    title: 'Courses, holes, and sponsors',
+    intro: 'Each course holds nine or eighteen holes, and holes carry sponsor branding and prize metadata.',
+    nodes: [
+      { name: 'Course', summary: 'A playable layout used by a tournament.', connections: ['Hole', 'TournamentResult'] },
+      { name: 'Hole', summary: 'Distance, basket placement, and description for one hole.', connections: ['Course', 'Sponsor'] },
+      { name: 'Sponsor', summary: 'Branding attached to a hole or the league.', connections: ['Hole'] },
+    ],
+  },
+  {
+    slug: 'sponsorship',
+    label: 'Sponsorship',
+    title: 'Who is paying for what',
+    intro:
+      'A season has one title sponsor, the largest commitment in the program, then a presenting sponsor and official partners. Everything else is scoped: broadcast, course, hole, team, and individual pro deals all hang off the same sponsorship record.',
+    nodes: [
+      { name: 'SponsorshipProgram', summary: 'All sponsorship agreements for a season, with one title sponsor enforced.', connections: ['Sponsorship', 'Season'] },
+      { name: 'Sponsorship', summary: 'One agreement: sponsor, tier, scope, amount, and status.', connections: ['Sponsor', 'SponsorshipProgram'] },
+      { name: 'Sponsor', summary: 'The brand behind an agreement.', connections: ['Sponsorship'] },
+      { name: 'Season', summary: 'Title and presenting sponsorships attach at the season level.', connections: ['SponsorshipProgram'] },
+      { name: 'Course', summary: 'Venue-scoped sponsorship, usually the host facility.', connections: ['Sponsorship', 'Hole'] },
+      { name: 'Hole', summary: 'Hole-scoped branding and prize sponsorship.', connections: ['Sponsorship'] },
+      { name: 'Player', summary: 'Pro-scoped endorsement deals sit on the player.', connections: ['Sponsorship', 'Team'] },
+      { name: 'Team', summary: 'Team-scoped sponsorship for a mixed pair.', connections: ['Sponsorship'] },
+    ],
+  },
+  {
+    slug: 'pipelines',
+    label: 'Pipelines',
+    title: 'Approval pipelines',
+    intro: 'Nothing becomes official without review: scorekeepers submit hole scores for admin approval, and pros submit posts for content approval.',
+    nodes: [
+      { name: 'ScorekeeperPipeline', summary: 'Blocks approval until every team has a score for every hole.', connections: ['Group', 'ScoreEntry'] },
+      { name: 'TournamentResult', summary: 'Created when the league admin approves the round.', connections: ['ScorekeeperPipeline', 'LeagueTable', 'FantasyScoring'] },
+      { name: 'FantasyScoring', summary: 'Reads approved scores only, so fantasy standings move when the admin confirms an event.', connections: ['FantasyTeam'] },
+      { name: 'Group', summary: 'The paired teams a scorekeeper is assigned to.', connections: ['Team', 'ScoreEntry'] },
+      { name: 'ScoreEntry', summary: 'One team score on one hole.', connections: ['ScorekeeperPipeline'] },
+      { name: 'ContentPipeline', summary: 'Queues pro posts as pending until approved or rejected.', connections: ['ContentSubmission'] },
+      { name: 'ContentSubmission', summary: 'Post text, optional media, status, reviewer, and note.', connections: ['ContentPipeline', 'UserProfile'] },
+    ],
+  },
+];
+
+const getDiagramView = (slug: string): DiagramView =>
+  DIAGRAM_VIEWS.find((view) => view.slug === slug) ?? DIAGRAM_VIEWS[0];
+
+const renderDiagramPage = (slug: string): string => {
+  const view = getDiagramView(slug);
+  const summaries = getEntitySummaries();
 
   return `
     <main class="page-shell">
@@ -2380,26 +3343,51 @@ const renderDiagramPage = (): string => {
         ${renderNav(getCurrentUser(), 'diagram')}
       </header>
 
+      <nav class="diagram-tabs" aria-label="Diagram views">
+        ${DIAGRAM_VIEWS.map(
+          (entry) => `
+            <a
+              class="diagram-tab ${entry.slug === view.slug ? 'is-active' : ''}"
+              href="${entry.slug === 'overview' ? '/diagram' : `/diagram/${entry.slug}`}"
+              aria-current="${entry.slug === view.slug ? 'page' : 'false'}"
+            >${entry.label}</a>
+          `,
+        ).join('')}
+      </nav>
+
       <section class="panel diagram-intro">
-        <h2>How the tables connect</h2>
-        <p>
-          The league is assembled from user profiles, then expanded into memberships, fantasy rosters, course data,
-          and tournament results. The standings table rolls up the results from each event.
-        </p>
+        <h2>${escapeHtml(view.title)}</h2>
+        <p>${escapeHtml(view.intro)}</p>
+      </section>
+
+      <section class="panel diagram-canvas-panel">
+        <h2>Entity map</h2>
+        ${renderDiagramLegend(view.nodes)}
+        ${renderDiagramCanvas(view.nodes)}
       </section>
 
       <section class="diagram-grid">
-        ${nodes
+        ${view.nodes
           .map(
-            (node) => `
-              <article class="diagram-card">
-                <h3>${node.name}</h3>
+            (node) => {
+              const group = getDiagramGroup(node.name);
+              return `
+              <article class="diagram-card" ${group ? `style="--card-accent:${group.stroke}"` : ''}>
+                <h3>${node.name}<span class="info-dot" tabindex="0" role="button" aria-label="About ${escapeHtml(node.name)}" data-info-title="${escapeHtml(node.name)}" data-info="${escapeHtml(node.summary)}">i</span></h3>
                 <p>${node.summary}</p>
                 <ul>
-                  ${node.connections.map((connection) => `<li>${connection}</li>`).join('')}
+                  ${node.connections
+                    .map((connection) => {
+                      const summary = summaries.get(connection);
+                      return summary
+                        ? `<li>${connection}<span class="info-dot" tabindex="0" role="button" aria-label="About ${escapeHtml(connection)}" data-info-title="${escapeHtml(connection)}" data-info="${escapeHtml(summary)}">i</span></li>`
+                        : `<li>${connection}</li>`;
+                    })
+                    .join('')}
                 </ul>
               </article>
-            `,
+            `;
+            },
           )
           .join('')}
       </section>
@@ -2431,12 +3419,52 @@ const renderApp = (): void => {
   }
 
   if (route.kind === 'diagram') {
-    app.innerHTML = renderDiagramPage();
+    if (getCurrentUser().hasRole('siteAdmin')) {
+      app.innerHTML = renderDiagramPage(route.view);
+      void renderMermaidDiagrams();
+    } else {
+      app.innerHTML = renderRestrictedPage('Diagram');
+    }
     return;
   }
 
   app.innerHTML = renderHomePage();
 };
+
+const findInfoTarget = (event: Event): (HTMLElement & { dataset: DOMStringMap }) | SVGGElement | null => {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return null;
+  }
+
+  return target.closest('[data-info]') as (HTMLElement & { dataset: DOMStringMap }) | SVGGElement | null;
+};
+
+app.addEventListener('pointerover', (event) => {
+  const target = findInfoTarget(event);
+  if (!target) {
+    return;
+  }
+
+  showDiagramTooltip(target, target.dataset.infoTitle ?? '', target.dataset.info ?? '');
+});
+
+app.addEventListener('pointerout', (event) => {
+  if (findInfoTarget(event)) {
+    hideDiagramTooltip();
+  }
+});
+
+app.addEventListener('focusin', (event) => {
+  const target = findInfoTarget(event);
+  if (target) {
+    showDiagramTooltip(target, target.dataset.infoTitle ?? '', target.dataset.info ?? '');
+  }
+});
+
+app.addEventListener('focusout', () => hideDiagramTooltip());
+
+window.addEventListener('scroll', hideDiagramTooltip, { passive: true });
 
 app.addEventListener('input', (event) => {
   const playoffDistanceInput = event.target instanceof HTMLInputElement && event.target.matches('[data-playoff-distance-team]') ? event.target : null;
@@ -2451,6 +3479,29 @@ app.addEventListener('input', (event) => {
       }
       saveScorekeeperState();
     }
+  }
+});
+
+app.addEventListener('change', (event) => {
+  const fileInput =
+    event.target instanceof HTMLInputElement && event.target.type === 'file' && event.target.closest('form[data-action="post"]')
+      ? event.target
+      : null;
+  if (!fileInput) {
+    return;
+  }
+
+  const form = fileInput.closest('form[data-action="post"]') as HTMLFormElement;
+  (Array.from(form.querySelectorAll('input[type="file"]')) as HTMLInputElement[])
+    .filter((input) => input !== fileInput)
+    .forEach((input) => {
+      input.value = '';
+    });
+
+  const status = form.querySelector('[data-post-media-status]');
+  const file = fileInput.files?.[0];
+  if (status) {
+    status.textContent = file ? `Attached: ${file.name}` : 'Text only. Attach a photo or video from your phone if you want.';
   }
 });
 
@@ -2478,6 +3529,8 @@ app.addEventListener('click', (event) => {
     const nextFilter = dashboardChoice.getAttribute('data-dashboard-filter');
     if (nextFilter) {
       selectedDashboardFilter = nextFilter;
+      seasonFormMessage = '';
+      postStatusMessage = '';
       const href = dashboardChoice.getAttribute('href');
       if (href && href.startsWith('/')) {
         event.preventDefault();
@@ -2971,17 +4024,20 @@ app.addEventListener('submit', (event) => {
     const trimmedName = seasonName.value.trim();
     const purseValue = Number(purseInput.value || 4000000);
     if (!trimmedName) {
+      seasonFormMessage = 'Enter a season name before creating the season.';
       seasonName.focus();
+      renderApp();
       return;
     }
 
-    const nextSeed = SeasonService.createNamedSeason(
-      `season-${Date.now()}`,
-      trimmedName,
-      Number.isFinite(purseValue) && purseValue > 0 ? purseValue : 4_000_000,
-    );
+    const seasonId = `season-${Date.now()}`;
+    const purseAmount = Number.isFinite(purseValue) && purseValue > 0 ? purseValue : 4_000_000;
+    const nextSeed = SeasonService.createNamedSeason(seasonId, trimmedName, purseAmount);
 
     seed = nextSeed;
+    selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
+    window.localStorage.setItem(SEASON_STORAGE_KEY, JSON.stringify({ id: seasonId, name: trimmedName, purseAmount }));
+    seasonFormMessage = `Season "${trimmedName}" is live.`;
     renderApp();
     return;
   }
@@ -2992,8 +4048,44 @@ app.addEventListener('submit', (event) => {
     if (!content || !profileId) {
       return;
     }
-    addFanPost(profileId, content.value);
-    content.value = '';
+
+    const mediaInputs = Array.from(form.querySelectorAll('input[type="file"]')) as HTMLInputElement[];
+    const selectedFile = mediaInputs.map((input) => input.files?.[0]).find((file): file is File => Boolean(file));
+    const text = content.value;
+
+    if (!text.trim() && !selectedFile) {
+      postStatusMessage = 'Add a note, a photo, or a video before publishing.';
+      renderApp();
+      return;
+    }
+
+    void (async () => {
+      const media = selectedFile ? await readPostMedia(selectedFile) : undefined;
+      if (selectedFile && !media) {
+        postStatusMessage = 'That file type is not supported. Use a photo or a video.';
+        renderApp();
+        return;
+      }
+
+      const persisted = submitFanPost(profileId, text, media ?? undefined);
+      postStatusMessage = persisted
+        ? 'Sent to the league for review.'
+        : 'Sent for review, but the attachment was too large to keep in local storage.';
+      renderApp();
+    })();
+    return;
+  }
+
+  if (action === 'review-post') {
+    const submissionId = form.dataset.submissionId;
+    const submitter = (event as SubmitEvent).submitter as HTMLButtonElement | null;
+    const decision = submitter?.value === 'reject' ? 'reject' : 'approve';
+    const noteInput = form.querySelector('input[name="reviewNote"]') as HTMLInputElement | null;
+
+    if (submissionId) {
+      reviewFanPost(submissionId, decision, getCurrentUser(), noteInput?.value.trim() || undefined);
+    }
+
     renderApp();
     return;
   }

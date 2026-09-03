@@ -10,6 +10,11 @@ describe('AppRoutes', () => {
     expect(resolveAppRoute('/pros/pro-1')).toMatchObject({ kind: 'pro-detail', playerId: 'pro-1' });
   });
 
+  it('resolves diagram views', () => {
+    expect(resolveAppRoute('/diagram')).toMatchObject({ kind: 'diagram', view: 'overview' });
+    expect(resolveAppRoute('/diagram/pros')).toMatchObject({ kind: 'diagram', view: 'pros' });
+  });
+
   it('builds the team and pro data used by the routes', () => {
     const seed = SeasonService.createRealisticLeagueSeed('league-route-demo', 'Route Demo');
     const teams = getTeamSummaries(seed);

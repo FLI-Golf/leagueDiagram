@@ -290,6 +290,11 @@ form[data-action='edit-player-score'] label span {
   color: #dbeafe;
 }
 
+.role-siteAdmin {
+  background: rgba(244, 114, 182, 0.2);
+  color: #fce7f3;
+}
+
 .role-leagueAdmin,
 .role-scorekeeper {
   background: rgba(147, 51, 234, 0.18);
@@ -915,6 +920,285 @@ form[data-action='edit-player-score'] label span {
   margin-bottom: 20px;
 }
 
+.diagram-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.diagram-tab {
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  background: rgba(15, 23, 42, 0.7);
+  color: #cbd5e1;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.diagram-tab:hover {
+  border-color: rgba(96, 165, 250, 0.5);
+  color: #e2e8f0;
+}
+
+.diagram-tab.is-active {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(96, 165, 250, 0.6);
+  color: #d9f1ff;
+}
+
+.post-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.post-form textarea {
+  width: 100%;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.post-form button {
+  align-self: flex-start;
+}
+
+.post-media-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.post-media-button {
+  position: relative;
+  display: inline-flex;
+}
+
+.post-media-button input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.post-media-button span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.34);
+  background: rgba(59, 130, 246, 0.14);
+  color: #d3e7ff;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+}
+
+.post-media-button input[type='file']:focus-visible + span {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.post-media-status {
+  color: #94a3b8;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.post-media-status.is-warning {
+  color: #fbbf24;
+}
+
+.post-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.post-item {
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 14px;
+}
+
+.post-timestamp {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  margin-bottom: 6px;
+}
+
+.post-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.post-status {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.post-status--pending {
+  background: rgba(251, 191, 36, 0.16);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.32);
+}
+
+.post-status--approved {
+  background: rgba(34, 197, 94, 0.16);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.32);
+}
+
+.post-status--rejected {
+  background: rgba(248, 113, 113, 0.16);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.32);
+}
+
+.post-review-note {
+  margin-top: 8px;
+  color: #cbd5e1;
+  font-size: 0.82rem;
+}
+
+.post-review-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.post-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.secondary-button {
+  background: rgba(148, 163, 184, 0.16);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+}
+
+.post-media {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  margin-top: 10px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #0f172a;
+}
+
+.diagram-canvas-panel {
+  margin-bottom: 20px;
+}
+
+.diagram-canvas {
+  overflow-x: auto;
+  color: #94a3b8;
+}
+
+.diagram-canvas svg {
+  width: 100%;
+  min-width: 720px;
+  height: auto;
+  display: block;
+}
+
+.diagram-canvas g.node.has-info {
+  cursor: help;
+}
+
+.node-info-badge circle {
+  fill: rgba(59, 130, 246, 0.22);
+  stroke: rgba(96, 165, 250, 0.7);
+  stroke-width: 1;
+}
+
+.node-info-badge text {
+  fill: #dbeafe;
+  font-size: 10px;
+  font-weight: 700;
+  font-style: italic;
+}
+
+.diagram-canvas g.node.has-info:hover .node-info-badge circle {
+  fill: rgba(96, 165, 250, 0.45);
+}
+
+.info-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 6px;
+  border-radius: 50%;
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  color: #93c5fd;
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-style: italic;
+  cursor: help;
+  vertical-align: middle;
+}
+
+.info-dot:hover,
+.info-dot:focus-visible {
+  background: rgba(59, 130, 246, 0.24);
+  border-color: #60a5fa;
+  color: #e0f2fe;
+  outline: none;
+}
+
+.diagram-tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  background: rgba(2, 6, 23, 0.97);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.6);
+  pointer-events: none;
+}
+
+.diagram-tooltip[hidden] {
+  display: none;
+}
+
+.diagram-tooltip strong {
+  color: #d9f1ff;
+  font-size: 1.05rem;
+}
+
+.diagram-tooltip span {
+  color: #e2e8f0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
 .diagram-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -924,9 +1208,82 @@ form[data-action='edit-player-score'] label span {
 .diagram-card {
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(17, 24, 39, 0.78));
   border: 1px solid rgba(96, 165, 250, 0.34);
+  border-left: 4px solid var(--card-accent, rgba(96, 165, 250, 0.34));
   border-radius: 16px;
   padding: 18px 18px 14px;
   min-height: 160px;
+}
+
+.diagram-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 0;
+  margin: 0 0 14px;
+  color: #cbd5e1;
+  font-size: 0.8rem;
+}
+
+.sponsorship-list .sponsor-scope {
+  display: inline-block;
+  min-width: 92px;
+  margin-right: 10px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: rgba(148, 163, 184, 0.16);
+  color: #e2e8f0;
+}
+
+.sponsor-scope--season,
+.sponsor-scope--broadcast {
+  background: rgba(251, 146, 60, 0.2);
+  color: #ffedd5;
+}
+
+.sponsor-scope--course,
+.sponsor-scope--hole {
+  background: rgba(52, 211, 153, 0.18);
+  color: #d1fae5;
+}
+
+.sponsor-scope--pro,
+.sponsor-scope--team {
+  background: rgba(129, 140, 248, 0.2);
+  color: #e0e7ff;
+}
+
+.diagram-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid transparent;
+}
+
+.legend-line {
+  width: 22px;
+  height: 0;
+  border-top: 2.4px solid rgba(148, 163, 184, 0.9);
+}
+
+.legend-line--one {
+  border-top-style: dashed;
+  border-top-width: 1.6px;
+}
+
+.diagram-canvas .edgeLabel {
+  font-size: 11px;
 }
 
 .diagram-card h3 {
