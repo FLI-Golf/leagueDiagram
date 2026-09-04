@@ -1277,7 +1277,12 @@ form[data-action='edit-player-score'] label span {
   border-top: 2.4px solid rgba(148, 163, 184, 0.9);
 }
 
+.legend-line--many {
+  border-top-color: #4ade80;
+}
+
 .legend-line--one {
+  border-top-color: #60a5fa;
   border-top-style: dashed;
   border-top-width: 1.6px;
 }

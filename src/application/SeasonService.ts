@@ -26,6 +26,11 @@ export type HolePrizeMetadata = {
 
 export type FantasyLeagueSeed = FantasyLeague;
 
+export type TitleSponsorInput = {
+  name: string;
+  amount: number;
+};
+
 export type ReservePro = {
   id: string;
   displayName: string;
@@ -68,6 +73,8 @@ export type RealisticLeagueSeed = {
 };
 
 export class SeasonService {
+  private static readonly PRESENTING_SPONSOR_AMOUNT = 900_000;
+
   readonly id: string;
   readonly name: string;
   private readonly bootstrap: SeasonBootstrap;
@@ -91,8 +98,13 @@ export class SeasonService {
     return user.hasRole('siteAdmin') || user.hasRole('leagueAdmin') || user.hasRole('scorekeeper');
   }
 
-  static createNamedSeason(id: string, name: string, purseAmount = 4_000_000): RealisticLeagueSeed {
-    return SeasonService.createRealisticLeagueSeed(id, name, purseAmount);
+  // The presenting sponsor is the next-highest default commitment; the title sponsor must outspend it.
+  static getMinimumTitleSponsorAmount(): number {
+    return SeasonService.PRESENTING_SPONSOR_AMOUNT;
+  }
+
+  static createNamedSeason(id: string, name: string, purseAmount = 4_000_000, titleSponsor?: TitleSponsorInput): RealisticLeagueSeed {
+    return SeasonService.createRealisticLeagueSeed(id, name, purseAmount, titleSponsor);
   }
 
   static getEventPayoutAmount(eventIndex: number, finishPosition: number, payoutBreakdown: SeasonPayoutBreakdown = SeasonService.createProgressivePayoutBreakdown()): number {
@@ -184,7 +196,11 @@ export class SeasonService {
     return new SeasonService(id, name).bootstrapSeason(users, fantasyTeams, tournamentControls, purseAmount);
   }
 
-  static createRealisticLeagueSeed(id: string, name: string, purseAmount = 4_000_000): RealisticLeagueSeed {
+  static createRealisticLeagueSeed(id: string, name: string, purseAmount = 4_000_000, titleSponsor?: TitleSponsorInput): RealisticLeagueSeed {
+    if (titleSponsor && titleSponsor.amount <= SeasonService.PRESENTING_SPONSOR_AMOUNT) {
+      throw new Error(`The title sponsor must commit more than $${SeasonService.PRESENTING_SPONSOR_AMOUNT.toLocaleString()} to remain the season's top sponsor.`);
+    }
+
     const season = SeasonService.createDemoSeason(id, name, purseAmount);
 
     const course = new Course('course-turf-paradise', 'Turf Paradise');
@@ -205,10 +221,14 @@ export class SeasonService {
       new Sponsor('s-10', 'State Farm Insurance', 'Insurance • LOI Signed', 'https://example.com/state-farm.png'),
       new Sponsor('s-11', 'Creekside Sponsor', 'Course-side branding and sponsor support.', 'https://example.com/creekside-sponsor.png'),
     ];
-    const leagueSponsors = officialSponsors;
     const [, , , mediaSponsor, technologySponsor, , socialSponsor, insightSponsor, venueSponsor, insuranceSponsor] = officialSponsors;
+    const titleSponsorEntity = titleSponsor
+      ? new Sponsor('s-title-custom', titleSponsor.name, `Title Sponsor • $${titleSponsor.amount.toLocaleString()} • Signed`, 'https://example.com/title-sponsor.png')
+      : sponsorA;
+    const leagueSponsors = titleSponsor ? [...officialSponsors, titleSponsorEntity] : officialSponsors;
+    const titleSponsorAmount = titleSponsor?.amount ?? 1_500_000;
     const sponsorshipProgram = new SponsorshipProgram([
-      new Sponsorship('spon-title', sponsorA, 'title', 'season', id, name || 'Season', 1_500_000, 'signed'),
+      new Sponsorship('spon-title', titleSponsorEntity, 'title', 'season', id, name || 'Season', titleSponsorAmount, 'signed'),
       new Sponsorship('spon-presenting', sponsorC, 'presenting', 'season', id, name || 'Season', 900_000, 'signed'),
       new Sponsorship('spon-broadcast', mediaSponsor, 'official', 'broadcast', `${id}-broadcast`, 'Season broadcast', 200_000, 'signed'),
       new Sponsorship('spon-technology', technologySponsor, 'official', 'season', id, 'Scoring technology', 150_000, 'loi'),

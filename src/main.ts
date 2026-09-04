@@ -15,7 +15,7 @@ import type { SponsorshipScope, SponsorshipTier } from './domain/sponsorship/Spo
 import type { ContentMedia, ContentStatus, ContentSubmission } from './domain/pipeline/ContentPipeline';
 import { UserProfile } from './domain/user/UserProfile';
 
-let seed = SeasonService.createRealisticLeagueSeed('league-demo', '');
+let seed = SeasonService.createRealisticLeagueSeed('league-demo', 'Autumn Circuit');
 let selectedTournamentIndex = 0;
 let selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
 let selectedCourseNine = 'front';
@@ -833,7 +833,6 @@ const getRoleAccessSummary = (user: UserProfile): string[] => {
   return access.length > 0 ? access : ['Read-only league overview'];
 };
 
-// The demo seed starts unnamed so an admin creates the first season.
 const hasSeason = (): boolean => seed.season.league.name.trim().length > 0;
 
 const getSeasonDisplayName = (): string => seed.season.league.name.trim() || 'No season created yet';
@@ -874,19 +873,31 @@ const renderSeasonCreator = (): string => {
     return '';
   }
 
+  const currentTitleSponsor = seed.sponsorshipProgram.getTitleSponsorship();
+  const minimumTitleSponsorAmount = SeasonService.getMinimumTitleSponsorAmount();
+
   return `
     <section class="panel">
-      <h2>Create season</h2>
+      <h2>${hasSeason() ? 'Create upcoming season' : 'Create season'}</h2>
       <form data-action="create-season" class="inline-form">
         <label>
           <span>Season name</span>
-          <input type="text" name="seasonName" value="${seed.season.league.name}" placeholder="Autumn Circuit" required />
+          <input type="text" name="seasonName" value="${hasSeason() ? '' : seed.season.league.name}" placeholder="Winter Circuit" required />
         </label>
         <label>
           <span>Purse amount</span>
           <input type="number" name="purseAmount" value="${seed.season.league.purseAmount ?? 4000000}" min="0" step="100000" />
         </label>
-        <button type="submit">${hasSeason() ? 'Update season' : 'Create season'}</button>
+        <label>
+          <span>Title sponsor name</span>
+          <input type="text" name="titleSponsorName" value="${escapeHtml(currentTitleSponsor?.sponsor.name ?? '')}" placeholder="Northwind Outfitters" required />
+        </label>
+        <label>
+          <span>Title sponsor amount</span>
+          <input type="number" name="titleSponsorAmount" value="${currentTitleSponsor?.amount ?? minimumTitleSponsorAmount + 100_000}" min="${minimumTitleSponsorAmount + 1}" step="50000" required />
+        </label>
+        <p class="role-access-note">The title sponsor must commit more than $${minimumTitleSponsorAmount.toLocaleString()} — it has to be the season's biggest sponsorship.</p>
+        <button type="submit">${hasSeason() ? 'Create upcoming season' : 'Create season'}</button>
       </form>
       ${seasonFormMessage ? `<p class="role-access-note">${escapeHtml(seasonFormMessage)}</p>` : ''}
     </section>
@@ -2266,9 +2277,11 @@ const renderProDashboard = (user: UserProfile): string => {
 
   return `
     <main class="page-shell">
+      ${renderLoginPane()}
+
       <header class="hero">
         <div class="title-group">
-          <p class="eyebrow">Dashboard</p>
+          <p class="eyebrow">Current season</p>
           <div class="title-with-badges">
             <h1>${getSeasonDisplayName()}</h1>
             ${renderRoleBadges(user)}
@@ -2278,7 +2291,6 @@ const renderProDashboard = (user: UserProfile): string => {
 
       <section class="dashboard-layout">
         <div class="dashboard-column">${renderDashboardMenus()}</div>
-        <div class="dashboard-column">${renderLoginPane()}</div>
       </section>
 
       ${panel}
@@ -2354,9 +2366,11 @@ const renderHomePage = (): string => {
   if (selectedFilter === 'Content review' && (currentUser.hasRole('leagueAdmin') || currentUser.hasRole('siteAdmin'))) {
     return `
       <main class="page-shell">
+        ${renderLoginPane()}
+
         <header class="hero">
           <div class="title-group">
-            <p class="eyebrow">Dashboard</p>
+            <p class="eyebrow">Current season</p>
             <div class="title-with-badges">
               <h1>${getSeasonDisplayName()}</h1>
               ${renderRoleBadges(currentUser)}
@@ -2366,7 +2380,6 @@ const renderHomePage = (): string => {
 
         <section class="dashboard-layout">
           <div class="dashboard-column">${renderDashboardMenus()}</div>
-          <div class="dashboard-column">${renderLoginPane()}</div>
         </section>
 
         ${renderContentReviewPanel()}
@@ -2377,9 +2390,11 @@ const renderHomePage = (): string => {
   if (selectedFilter === 'Approve scores' || selectedFilter === 'Scorekeeper scorecard' || selectedFilter === 'Standings' || (currentUser.hasRole('scorekeeper') && !!getAssignedGroupForUser(currentUser))) {
     return `
       <main class="page-shell">
+        ${renderLoginPane()}
+
         <header class="hero">
           <div class="title-group">
-            <p class="eyebrow">Dashboard</p>
+            <p class="eyebrow">Current season</p>
             <div class="title-with-badges">
               <h1>${getSeasonDisplayName()}</h1>
               ${renderRoleBadges(currentUser)}
@@ -2389,7 +2404,6 @@ const renderHomePage = (): string => {
 
         <section class="dashboard-layout">
           <div class="dashboard-column">${renderDashboardMenus()}</div>
-          <div class="dashboard-column">${renderLoginPane()}</div>
         </section>
 
         ${currentUser.hasRole('leagueAdmin') && selectedFilter === 'Approve scores' ? renderAdminApprovalDashboard() : renderScorekeeperDashboard()}
@@ -2400,9 +2414,11 @@ const renderHomePage = (): string => {
   if (selectedFilter === 'Draft controls' || selectedFilter === 'Fantasy league') {
     return `
       <main class="page-shell">
+        ${renderLoginPane()}
+
         <header class="hero">
           <div class="title-group">
-            <p class="eyebrow">Dashboard</p>
+            <p class="eyebrow">Current season</p>
             <div class="title-with-badges">
               <h1>${getSeasonDisplayName()}</h1>
               ${renderRoleBadges(currentUser)}
@@ -2412,7 +2428,6 @@ const renderHomePage = (): string => {
 
         <section class="dashboard-layout">
           <div class="dashboard-column">${renderDashboardMenus()}</div>
-          <div class="dashboard-column">${renderLoginPane()}</div>
         </section>
 
         ${renderFantasyDraftPanel()}
@@ -2493,9 +2508,11 @@ const renderHomePage = (): string => {
 
   return `
     <main class="page-shell">
+      ${renderLoginPane()}
+
       <header class="hero">
         <div class="title-group">
-          <p class="eyebrow">Dashboard</p>
+          <p class="eyebrow">Current season</p>
           <div class="title-with-badges">
             <h1>${getSeasonDisplayName()}</h1>
             ${renderRoleBadges(currentUser)}
@@ -2505,7 +2522,6 @@ const renderHomePage = (): string => {
 
       <section class="dashboard-layout">
         <div class="dashboard-column">${renderDashboardMenus()}</div>
-        <div class="dashboard-column">${renderLoginPane()}</div>
       </section>
 
       ${renderSeasonCreator()}
@@ -3118,6 +3134,41 @@ const annotateDiagramNodes = (container: HTMLElement): void => {
   });
 };
 
+// Blue reads as "has one", green reads as "has many" across the entity map.
+// Edge labels render as HTML (span.edgeLabel > p), so set "color" there and "fill" for any SVG text fallback.
+const colorDiagramEdgeLabels = (container: HTMLElement): void => {
+  container.querySelectorAll<HTMLElement | SVGElement>('.edgeLabel').forEach((labelGroup) => {
+    const text = labelGroup.textContent?.trim();
+    const color = text === 'has one' ? '#60a5fa' : text === 'has many' ? '#4ade80' : null;
+    if (!color) {
+      return;
+    }
+
+    labelGroup.querySelectorAll<HTMLElement>('p, span').forEach((textNode) => {
+      textNode.style.color = color;
+      textNode.style.backgroundColor = 'transparent';
+    });
+    labelGroup.querySelectorAll<SVGElement>('text, tspan').forEach((textNode) => {
+      textNode.style.fill = color;
+      textNode.setAttribute('fill', color);
+    });
+    if (labelGroup instanceof HTMLElement) {
+      labelGroup.style.color = color;
+      labelGroup.style.backgroundColor = 'transparent';
+
+      // Mermaid wraps the label in extra divs (e.g. .labelBkg) that carry their own grey background.
+      let ancestor = labelGroup.parentElement;
+      while (ancestor && ancestor.tagName.toLowerCase() !== 'foreignobject') {
+        ancestor.style.backgroundColor = 'transparent';
+        ancestor = ancestor.parentElement;
+      }
+    }
+    labelGroup.querySelectorAll<SVGElement>('rect').forEach((rect) => {
+      rect.setAttribute('fill', 'transparent');
+    });
+  });
+};
+
 const getDiagramTooltip = (): HTMLElement => {
   const existing = document.getElementById('diagram-tooltip');
   if (existing) {
@@ -3176,6 +3227,7 @@ const renderMermaidDiagrams = async (): Promise<void> => {
         const { svg } = await mermaid.render(`mermaid-diagram-${index}-${Date.now()}`, definition);
         container.innerHTML = svg;
         annotateDiagramNodes(container);
+        colorDiagramEdgeLabels(container);
       } catch {
         container.textContent = 'The diagram could not be rendered.';
       }
@@ -4016,8 +4068,10 @@ app.addEventListener('submit', (event) => {
   if (action === 'create-season') {
     const seasonName = form.querySelector('input[name="seasonName"]') as HTMLInputElement | null;
     const purseInput = form.querySelector('input[name="purseAmount"]') as HTMLInputElement | null;
+    const titleSponsorNameInput = form.querySelector('input[name="titleSponsorName"]') as HTMLInputElement | null;
+    const titleSponsorAmountInput = form.querySelector('input[name="titleSponsorAmount"]') as HTMLInputElement | null;
     const currentUser = getCurrentUser();
-    if (!seasonName || !purseInput || !SeasonService.canCreateSeason(currentUser)) {
+    if (!seasonName || !purseInput || !titleSponsorNameInput || !titleSponsorAmountInput || !SeasonService.canCreateSeason(currentUser)) {
       return;
     }
 
@@ -4030,14 +4084,41 @@ app.addEventListener('submit', (event) => {
       return;
     }
 
+    const trimmedTitleSponsorName = titleSponsorNameInput.value.trim();
+    const titleSponsorAmount = Number(titleSponsorAmountInput.value);
+    if (!trimmedTitleSponsorName) {
+      seasonFormMessage = 'Enter a title sponsor before creating the season.';
+      titleSponsorNameInput.focus();
+      renderApp();
+      return;
+    }
+    if (!Number.isFinite(titleSponsorAmount) || titleSponsorAmount <= 0) {
+      seasonFormMessage = 'Enter a valid title sponsor amount.';
+      titleSponsorAmountInput.focus();
+      renderApp();
+      return;
+    }
+
     const seasonId = `season-${Date.now()}`;
     const purseAmount = Number.isFinite(purseValue) && purseValue > 0 ? purseValue : 4_000_000;
-    const nextSeed = SeasonService.createNamedSeason(seasonId, trimmedName, purseAmount);
+
+    let nextSeed;
+    try {
+      nextSeed = SeasonService.createNamedSeason(seasonId, trimmedName, purseAmount, {
+        name: trimmedTitleSponsorName,
+        amount: titleSponsorAmount,
+      });
+    } catch (error) {
+      seasonFormMessage = error instanceof Error ? error.message : 'Unable to create the season.';
+      titleSponsorAmountInput.focus();
+      renderApp();
+      return;
+    }
 
     seed = nextSeed;
     selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
     window.localStorage.setItem(SEASON_STORAGE_KEY, JSON.stringify({ id: seasonId, name: trimmedName, purseAmount }));
-    seasonFormMessage = `Season "${trimmedName}" is live.`;
+    seasonFormMessage = `Season "${trimmedName}" is live with ${trimmedTitleSponsorName} as title sponsor.`;
     renderApp();
     return;
   }

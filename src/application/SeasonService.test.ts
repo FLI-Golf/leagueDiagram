@@ -131,4 +131,26 @@ describe('Season service facade', () => {
     expect(SeasonService.getEventPayoutTotal(5, payoutBreakdown)).toBe(1_120_000);
     expect(SeasonService.getEventPayoutAmount(5, 1, payoutBreakdown)).toBe(264_568);
   });
+
+  it('lets a league admin set a custom title sponsor as long as it outspends the other season sponsors', () => {
+    const seed = SeasonService.createNamedSeason('upcoming-season-1', 'Winter Circuit', 4_000_000, {
+      name: 'Northwind Outfitters',
+      amount: 2_000_000,
+    });
+
+    const title = seed.sponsorshipProgram.getTitleSponsorship();
+    expect(title?.sponsor.name).toBe('Northwind Outfitters');
+    expect(title?.amount).toBe(2_000_000);
+    expect(seed.sponsorshipProgram.isTitleSponsorPrincipal()).toBe(true);
+    expect(seed.sponsors.some((sponsor) => sponsor.name === 'Northwind Outfitters')).toBe(true);
+  });
+
+  it('rejects a title sponsor that would not pay the most', () => {
+    expect(() =>
+      SeasonService.createNamedSeason('upcoming-season-2', 'Winter Circuit', 4_000_000, {
+        name: 'Bargain Bin Sponsors',
+        amount: 500_000,
+      }),
+    ).toThrow(/title sponsor must commit more/i);
+  });
 });
