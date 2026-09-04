@@ -1,4 +1,5 @@
 export { Course } from './course/Course';
+export { FliStyle, MultiRoundStyle } from './course/CourseStyle';
 export { Draft } from './draft/Draft';
 export { DraftAdmins } from './draft/DraftAdmins';
 export { DraftControlSettings } from './draft/DraftControlSettings';

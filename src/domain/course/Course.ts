@@ -1,4 +1,5 @@
 import { Hole } from './Hole';
+import { CourseStyle, FliStyle } from './CourseStyle';
 
 export class Course {
   readonly id: string;
@@ -55,17 +56,10 @@ export class Course {
   }
 
   buildTournamentRound(): Hole[] {
-    if (this.holes.length < 9) {
-      throw new Error('A tournament round requires at least 9 holes.');
-    }
+    return this.buildTournamentRounds()[0] ?? [];
+  }
 
-    const frontNine = this.holes.slice(0, 9);
-    const backNine = this.holes.slice(9, 18);
-
-    if (backNine.length === 0) {
-      return [...frontNine, ...frontNine];
-    }
-
-    return [...frontNine, ...backNine];
+  buildTournamentRounds(style: CourseStyle = new FliStyle()): Hole[][] {
+    return style.buildRounds(this.holes);
   }
 }

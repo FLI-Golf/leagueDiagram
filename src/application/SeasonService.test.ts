@@ -56,10 +56,13 @@ describe('Season service facade', () => {
     expect(seed.sponsors).toHaveLength(11);
     expect(seed.course.getHoleByNumber(3).getSponsors()[0].name).toMatch(/Creekside Sponsor|Hazard Partners|Fairway Support/);
     expect(seed.schedule.getEvents()).toHaveLength(6);
-    expect(seed.schedule.getEvents()[0].date).toBe('2026-09-01');
-    expect(seed.schedule.getEvents()[0].result.name).toBe("America's Mobile Open");
-    expect(seed.schedule.getEvents()[1].date).toBe('2026-09-15');
-    expect(seed.schedule.getEvents()[2].date).toBe('2026-09-29');
+    expect(seed.schedule.getEvents()[0].date).toBe('2026-06-02');
+    expect(seed.schedule.getEvents()[0].result.name).toBe('Sunset Open');
+    expect(seed.schedule.getEvents()[1].date).toBe('2026-06-16');
+    expect(seed.schedule.getEvents()[2].date).toBe('2026-06-30');
+    expect(seed.schedule.getEvents()[5].date).toBe('2026-08-11');
+    expect(seed.schedule.getEvents()[0].courseName).toBe('Turf Paradise');
+    expect(seed.schedule.getEvents()[2].courseName).toBe('Canyon Mesa Park');
     expect(seed.holeMetadata[2].prize.amount).toBe(120);
     expect(seed.holeMetadata[2].sponsors[0].name).toBe("America's Mobile");
   });
@@ -96,7 +99,7 @@ describe('Season service facade', () => {
 
     expect(payoutBreakdown.totalPurse).toBe(4_000_000);
     expect(payoutBreakdown.events).toHaveLength(6);
-    expect(payoutBreakdown.events[0].name).toBe("America's Mobile Open");
+    expect(payoutBreakdown.events[0].name).toBe('Sunset Open');
     expect(payoutBreakdown.events[0].eventTotal).toBe(400_000);
     expect(payoutBreakdown.events[5].eventTotal).toBe(1_120_000);
     expect(payoutBreakdown.events[0].placements).toHaveLength(12);
@@ -132,6 +135,30 @@ describe('Season service facade', () => {
     expect(SeasonService.getEventPayoutAmount(5, 1, payoutBreakdown)).toBe(264_568);
   });
 
+  it('creates a winter schedule and scales event payouts to the selected season purse', () => {
+    const seed = SeasonService.createNamedSeason('winter-season-1', 'Winter Season', 8_000_000);
+
+    expect(seed.schedule.getEvents()[0].date).toBe('2026-12-01');
+    expect(seed.schedule.getEvents()[5].date).toBe('2027-02-09');
+    expect(seed.schedule.getEvents()[0].result.name).toBe('Snowline Open');
+    expect(seed.schedule.getEvents()[0].courseName).toBe('Pine Ridge Disc Park');
+    expect(seed.payoutBreakdown.totalPurse).toBe(8_000_000);
+    expect(seed.payoutBreakdown.events.reduce((sum, event) => sum + event.eventTotal, 0)).toBe(8_000_000);
+    expect(seed.payoutBreakdown.events[0].eventTotal).toBe(800_000);
+  });
+
+  it('creates a multi-round season with a configurable course from 9 to 33 holes', () => {
+    const seed = SeasonService.createNamedSeason('multi-round-season-1', 'Championship Season', 6_000_000, undefined, {
+      format: 'multi-round',
+      courseHoleCount: 24,
+    });
+
+    expect(seed.format).toBe('multi-round');
+    expect(seed.scoringHoleCount).toBe(24);
+    expect(seed.course.getHoles()).toHaveLength(24);
+    expect(seed.course.getHoleByNumber(24).name).toBe('Pine Point 24');
+  });
+
   it('lets a league admin set a custom title sponsor as long as it outspends the other season sponsors', () => {
     const seed = SeasonService.createNamedSeason('upcoming-season-1', 'Winter Circuit', 4_000_000, {
       name: 'Northwind Outfitters',
@@ -143,6 +170,17 @@ describe('Season service facade', () => {
     expect(title?.amount).toBe(2_000_000);
     expect(seed.sponsorshipProgram.isTitleSponsorPrincipal()).toBe(true);
     expect(seed.sponsors.some((sponsor) => sponsor.name === 'Northwind Outfitters')).toBe(true);
+  });
+
+  it('uses the default commitment for a custom title sponsor when no amount is supplied', () => {
+    const seed = SeasonService.createNamedSeason('upcoming-season-default-sponsor', 'Winter Circuit', 4_000_000, {
+      name: 'Northwind Outfitters',
+    });
+
+    const title = seed.sponsorshipProgram.getTitleSponsorship();
+    expect(title?.sponsor.name).toBe('Northwind Outfitters');
+    expect(title?.amount).toBe(1_500_000);
+    expect(seed.sponsorshipProgram.isTitleSponsorPrincipal()).toBe(true);
   });
 
   it('rejects a title sponsor that would not pay the most', () => {

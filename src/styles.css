@@ -118,6 +118,11 @@ form[data-action='edit-player-score'] label span {
   color: #ffffff;
 }
 
+form[data-action='create-season'] label,
+form[data-action='create-season'] label span {
+  color: #ffffff;
+}
+
 .nav-under-dashboard {
   display: flex;
   justify-content: center;

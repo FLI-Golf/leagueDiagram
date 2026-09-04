@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Course } from './Course';
+import { MultiRoundStyle } from './CourseStyle';
 import { Hole } from './Hole';
 import { Sponsor } from './Sponsor';
 
@@ -37,6 +38,21 @@ describe('Course domain model', () => {
     expect(round[8].number).toBe(9);
     expect(round[9].number).toBe(1);
     expect(course.intermissionAfterHoleNumber).toBe(9);
+  });
+
+  it('builds a multi-round tournament from the default FliStyle round', () => {
+    const course = makeCourse();
+    const rounds = course.buildTournamentRounds(new MultiRoundStyle(3));
+
+    expect(rounds).toHaveLength(3);
+  expect(rounds.every((round) => round.length === 18)).toBe(true);
+    expect(rounds[0][8].number).toBe(9);
+    expect(rounds[0][9].number).toBe(1);
+    expect(rounds[1]).not.toBe(rounds[0]);
+  });
+
+  it('requires a multi-round tournament to contain at least two rounds', () => {
+    expect(() => new MultiRoundStyle(1)).toThrow('A MultiRoundStyle requires at least 2 rounds.');
   });
 
   it('A course can resolve a hole number across an 18-hole round even when the course only contains 9 holes', () => {

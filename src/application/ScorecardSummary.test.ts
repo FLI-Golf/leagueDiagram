@@ -35,6 +35,19 @@ describe('ScorecardSummary', () => {
     expect(rows[3].displayTotal).toBe('+2');
   });
 
+  it('supports a multi-round scorecard with more than 18 holes', () => {
+    const lineups = [{ teamName: 'Ace Makers', players: ['Simon Lizotte'] }];
+    const holeScoresByIndex: Record<number, Record<string, string>> = {
+      23: { 'Group A|Ace Makers|Simon Lizotte': '+4' },
+    };
+
+    const rows = buildGroupScorecard('Group A', lineups, holeScoresByIndex, 24);
+
+    expect(rows[0].holeScores).toHaveLength(24);
+    expect(rows[0].holeScores[23].displayValue).toBe('+1');
+    expect(getDisplayedHoleValueForPlayer('Group A', 'Ace Makers', 'Simon Lizotte', 24, lineups, holeScoresByIndex, 24)).toBe('+1');
+  });
+
   it('normalizes scorecard edit values before saving a corrected hole score', () => {
     expect(normalizeScoreEditValue('E')).toBe('E');
     expect(normalizeScoreEditValue('+4')).toBe('+4');

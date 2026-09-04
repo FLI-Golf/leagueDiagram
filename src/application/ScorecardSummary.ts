@@ -57,9 +57,10 @@ export const getDisplayedHoleValueForPlayer = (
   holeNumber: number,
   lineups: readonly GroupScorecardLineup[],
   holeScoresByIndex: Record<number, Record<string, string>>,
+  holeCount = 18,
 ): string => {
-  const safeHoleNumber = Math.min(Math.max(holeNumber, 1), 18);
-  const playerRow = buildGroupScorecard(groupName, lineups, holeScoresByIndex).find(
+  const safeHoleNumber = Math.min(Math.max(holeNumber, 1), holeCount);
+  const playerRow = buildGroupScorecard(groupName, lineups, holeScoresByIndex, holeCount).find(
     (row) => row.player === playerName && row.teamName === teamName,
   );
 
@@ -79,13 +80,14 @@ export const buildGroupScorecard = (
   groupName: string,
   lineups: readonly GroupScorecardLineup[],
   holeScoresByIndex: Record<number, Record<string, string>>,
+  holeCount = 18,
 ): GroupScorecardPlayer[] => {
   const rows: GroupScorecardPlayer[] = [];
 
   for (const lineup of lineups) {
     for (const player of lineup.players) {
       const key = `${groupName}|${lineup.teamName}|${player}`;
-      const holeScores = Array.from({ length: 18 }, (_, holeIndex) => {
+      const holeScores = Array.from({ length: holeCount }, (_, holeIndex) => {
         const rawValue = holeScoresByIndex[holeIndex]?.[key] ?? '+3';
         const normalizedValue = /^[-+]?\d+$/.test(String(rawValue)) ? String(rawValue) : '+3';
         const relativeToPar = parseRelativeToPar(normalizedValue);

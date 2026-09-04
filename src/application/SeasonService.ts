@@ -28,7 +28,14 @@ export type FantasyLeagueSeed = FantasyLeague;
 
 export type TitleSponsorInput = {
   name: string;
-  amount: number;
+  amount?: number;
+};
+
+export type SeasonFormat = 'fli' | 'multi-round';
+
+export type SeasonFormatInput = {
+  format?: SeasonFormat;
+  courseHoleCount?: number;
 };
 
 export type ReservePro = {
@@ -59,6 +66,8 @@ export type SeasonPayoutBreakdown = {
 
 export type RealisticLeagueSeed = {
   season: SeasonBootstrapResult;
+  format: SeasonFormat;
+  scoringHoleCount: number;
   course: Course;
   courseOptions: readonly Course[];
   tournamentNames: readonly string[];
@@ -103,8 +112,8 @@ export class SeasonService {
     return SeasonService.PRESENTING_SPONSOR_AMOUNT;
   }
 
-  static createNamedSeason(id: string, name: string, purseAmount = 4_000_000, titleSponsor?: TitleSponsorInput): RealisticLeagueSeed {
-    return SeasonService.createRealisticLeagueSeed(id, name, purseAmount, titleSponsor);
+  static createNamedSeason(id: string, name: string, purseAmount = 4_000_000, titleSponsor?: TitleSponsorInput, formatInput?: SeasonFormatInput): RealisticLeagueSeed {
+    return SeasonService.createRealisticLeagueSeed(id, name, purseAmount, titleSponsor, formatInput);
   }
 
   static getEventPayoutAmount(eventIndex: number, finishPosition: number, payoutBreakdown: SeasonPayoutBreakdown = SeasonService.createProgressivePayoutBreakdown()): number {
@@ -117,10 +126,12 @@ export class SeasonService {
     return payoutBreakdown.events[eventIndex]?.eventTotal ?? payoutBreakdown.totalPurse;
   }
 
-  static createProgressivePayoutBreakdown(): SeasonPayoutBreakdown {
-    const eventTotals = [400_000, 480_000, 560_000, 720_000, 720_000, 1_120_000];
-    const eventDates = ['2026-09-01', '2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10'];
-    const eventNames = ["America's Mobile Open", 'Blackwood Clash', 'Ridge Rumble', 'Autumn Classic', 'Pine Valley Showdown', 'Championship Weekend'];
+  static createProgressivePayoutBreakdown(purseAmount = 4_000_000, seasonName = ''): SeasonPayoutBreakdown {
+    const baseEventTotals = [400_000, 480_000, 560_000, 720_000, 720_000, 1_120_000];
+    const eventTotals = baseEventTotals.map((amount) => Math.round((amount / 4_000_000) * purseAmount));
+    eventTotals[0] += purseAmount - eventTotals.reduce((sum, amount) => sum + amount, 0);
+    const eventDates = SeasonService.getSeasonEventDates(seasonName);
+    const eventNames = SeasonService.getSeasonTournamentNames(seasonName);
     const baseWeights = [0.24, 0.2, 0.16, 0.12, 0.08, 0.06, 0.04, 0.03, 0.02, 0.015, 0.01, 0.005];
     const boostedWeights = baseWeights.map((weight, placementIndex) => (placementIndex >= 6 ? weight * 1.3 : weight));
     const normalizedWeights = boostedWeights.map((weight) => weight / boostedWeights.reduce((sum, item) => sum + item, 0));
@@ -148,9 +159,21 @@ export class SeasonService {
     });
 
     return {
-      totalPurse: 4_000_000,
+      totalPurse: purseAmount,
       events,
     };
+  }
+
+  private static getSeasonEventDates(seasonName: string): readonly string[] {
+    return /winter/i.test(seasonName)
+      ? ['2026-12-01', '2026-12-15', '2026-12-29', '2027-01-12', '2027-01-26', '2027-02-09']
+      : ['2026-06-02', '2026-06-16', '2026-06-30', '2026-07-14', '2026-07-28', '2026-08-11'];
+  }
+
+  private static getSeasonTournamentNames(seasonName: string): readonly string[] {
+    return /winter/i.test(seasonName)
+      ? ['Snowline Open', 'Frost Valley Cup', 'Evergreen Invitational', 'Winter Classic', 'North Ridge Showdown', 'Icebreaker Championship']
+      : ['Sunset Open', 'Canyon Heat Cup', 'Summer Solstice Invitational', 'High Desert Classic', 'Mesa Flight Showdown', 'Summer Championship'];
   }
 
   static createDemoSeason(id: string, name: string, purseAmount = 4_000_000): SeasonBootstrapResult {
@@ -196,14 +219,21 @@ export class SeasonService {
     return new SeasonService(id, name).bootstrapSeason(users, fantasyTeams, tournamentControls, purseAmount);
   }
 
-  static createRealisticLeagueSeed(id: string, name: string, purseAmount = 4_000_000, titleSponsor?: TitleSponsorInput): RealisticLeagueSeed {
-    if (titleSponsor && titleSponsor.amount <= SeasonService.PRESENTING_SPONSOR_AMOUNT) {
+  static createRealisticLeagueSeed(id: string, name: string, purseAmount = 4_000_000, titleSponsor?: TitleSponsorInput, formatInput?: SeasonFormatInput): RealisticLeagueSeed {
+    const format = formatInput?.format ?? 'fli';
+    const requestedCourseHoleCount = formatInput?.courseHoleCount ?? 18;
+    if (!Number.isInteger(requestedCourseHoleCount) || requestedCourseHoleCount < 9 || requestedCourseHoleCount > 33) {
+      throw new Error('A MultiRound course must contain from 9 to 33 holes.');
+    }
+    const scoringHoleCount = format === 'multi-round' ? requestedCourseHoleCount : 18;
+    const titleSponsorAmount = titleSponsor?.amount ?? 1_500_000;
+    if (titleSponsor && titleSponsorAmount <= SeasonService.PRESENTING_SPONSOR_AMOUNT) {
       throw new Error(`The title sponsor must commit more than $${SeasonService.PRESENTING_SPONSOR_AMOUNT.toLocaleString()} to remain the season's top sponsor.`);
     }
 
     const season = SeasonService.createDemoSeason(id, name, purseAmount);
 
-    const course = new Course('course-turf-paradise', 'Turf Paradise');
+    let course = new Course('course-turf-paradise', 'Turf Paradise');
     const alternateCourse = new Course('course-arizona-athletic-grounds', 'Arizona Athletic Grounds');
     const sponsorA = new Sponsor('s-1', "America's Mobile", 'Wireless Mobile • $100,000 • LOI Signed', 'https://example.com/americas-mobile.png');
     const sponsorB = new Sponsor('s-2', 'Sur Coffee', 'Beverage • $125,000 • LOI Signed', 'https://example.com/sur-coffee.png');
@@ -223,10 +253,9 @@ export class SeasonService {
     ];
     const [, , , mediaSponsor, technologySponsor, , socialSponsor, insightSponsor, venueSponsor, insuranceSponsor] = officialSponsors;
     const titleSponsorEntity = titleSponsor
-      ? new Sponsor('s-title-custom', titleSponsor.name, `Title Sponsor • $${titleSponsor.amount.toLocaleString()} • Signed`, 'https://example.com/title-sponsor.png')
+      ? new Sponsor('s-title-custom', titleSponsor.name, `Title Sponsor • $${titleSponsorAmount.toLocaleString()} • Signed`, 'https://example.com/title-sponsor.png')
       : sponsorA;
     const leagueSponsors = titleSponsor ? [...officialSponsors, titleSponsorEntity] : officialSponsors;
-    const titleSponsorAmount = titleSponsor?.amount ?? 1_500_000;
     const sponsorshipProgram = new SponsorshipProgram([
       new Sponsorship('spon-title', titleSponsorEntity, 'title', 'season', id, name || 'Season', titleSponsorAmount, 'signed'),
       new Sponsorship('spon-presenting', sponsorC, 'presenting', 'season', id, name || 'Season', 900_000, 'signed'),
@@ -318,14 +347,28 @@ export class SeasonService {
 
     const courseOptions = [course, alternateCourse];
 
-    const tournamentNames = [
-      'America\'s Mobile Open',
-      'Sur Coffee Showdown',
-      'SCCG Management Invitational',
-      'Go Throw League Cup',
-      'Turf Paradise Clash',
-      'State Farm Championship Weekend',
-    ];
+    if (format === 'multi-round') {
+      const multiRoundCourse = new Course(`${id}-multi-round-course`, `${name || 'Season'} Course`);
+      const holeNames = ['Opening Line', 'Fairway Bend', 'Cedar Lane', 'Ridge Run', 'Valley Approach', 'Pine Point', 'Summit Drive', 'Creek Crossing', 'Final Green'];
+      for (let index = 0; index < scoringHoleCount; index += 1) {
+        const number = index + 1;
+        const hole = new Hole(
+          `${id}-hole-${number}`,
+          number,
+          `${holeNames[index % holeNames.length]} ${number}`,
+          `A par 3 scoring hole in the ${name || 'season'} multi-round course.`,
+          `Standard basket setup ${number}`,
+          3,
+          180 + (index % 9) * 30,
+        );
+        hole.addSponsor(genericObstacleSponsors[index % genericObstacleSponsors.length]);
+        multiRoundCourse.addHole(hole);
+      }
+      courseOptions.unshift(multiRoundCourse);
+      course = multiRoundCourse;
+    }
+
+    const tournamentNames = SeasonService.getSeasonTournamentNames(name);
 
     const holeMetadata: HolePrizeMetadata[] = [
       { holeNumber: 1, title: 'Birdie Bonus', description: 'Closest-to-pin on the opening drive.', prize: { amount: 50, currency: 'USD', award: 'Closest to the pin' }, sponsors: [sponsorA] },
@@ -340,22 +383,15 @@ export class SeasonService {
     ];
 
     const schedule = new EventSchedule(`${id}-schedule`);
-    const firstEventDate = new Date('2026-09-01T00:00:00Z');
+    const eventDates = SeasonService.getSeasonEventDates(name);
 
-    const eventCourseAssignments = [
-      'Turf Paradise',
-      'Arizona Athletic Grounds',
-      'Turf Paradise',
-      'Arizona Athletic Grounds',
-      'Turf Paradise',
-      'Arizona Athletic Grounds',
-    ];
+    const eventCourseAssignments = /winter/i.test(name)
+      ? ['Pine Ridge Disc Park', 'Frost Creek Grounds', 'Evergreen Hills', 'North Peak Course', 'Glacier View Park', 'Summit Valley']
+      : ['Turf Paradise', 'Arizona Athletic Grounds', 'Canyon Mesa Park', 'Sunset Nine', 'Desert Breeze Course', 'Copper Ridge Grounds'];
 
     for (let index = 0; index < tournamentNames.length; index += 1) {
-      const eventDate = new Date(firstEventDate);
-      eventDate.setUTCDate(eventDate.getUTCDate() + index * 14);
       const event = new TournamentResult(`t-${index + 1}`, tournamentNames[index], []);
-      schedule.addEvent(eventDate.toISOString().slice(0, 10), event, eventCourseAssignments[index] ?? 'Turf Paradise');
+      schedule.addEvent(eventDates[index] ?? eventDates[0], event, eventCourseAssignments[index] ?? 'Turf Paradise');
     }
 
     const realLeagueTeams: Team[] = [
@@ -395,6 +431,8 @@ export class SeasonService {
 
     return {
       season,
+      format,
+      scoringHoleCount,
       course,
       courseOptions,
       tournamentNames,
@@ -405,7 +443,7 @@ export class SeasonService {
       realLeagueTeams,
       reservePros,
       fantasyLeagues,
-      payoutBreakdown: SeasonService.createProgressivePayoutBreakdown(),
+      payoutBreakdown: SeasonService.createProgressivePayoutBreakdown(purseAmount, name),
     };
   }
 }

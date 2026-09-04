@@ -15,7 +15,12 @@ import type { SponsorshipScope, SponsorshipTier } from './domain/sponsorship/Spo
 import type { ContentMedia, ContentStatus, ContentSubmission } from './domain/pipeline/ContentPipeline';
 import { UserProfile } from './domain/user/UserProfile';
 
-let seed = SeasonService.createRealisticLeagueSeed('league-demo', 'Autumn Circuit');
+const createStarterSeed = () => SeasonService.createNamedSeason('league-demo', 'Summer Season', 4_000_000);
+const createStarterUpcomingSeed = () => SeasonService.createNamedSeason('league-demo-upcoming', 'Winter Season', 8_000_000);
+const createEmptySeasonSeed = () => SeasonService.createNamedSeason('league-empty', '', 4_000_000);
+
+let seed = createStarterSeed();
+let upcomingSeed: ReturnType<typeof createStarterSeed> | null = createStarterUpcomingSeed();
 let selectedTournamentIndex = 0;
 let selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
 let selectedCourseNine = 'front';
@@ -81,21 +86,41 @@ const PRO_STORAGE_KEY = 'league-demo-pro-fan-posts';
 const USER_STORAGE_KEY = 'league-demo-current-user';
 const SEASON_STORAGE_KEY = 'league-demo-season';
 
-const getStoredSeason = (): { id: string; name: string; purseAmount: number } | null => {
+type StoredSeason = { id: string; name: string; purseAmount: number; format?: 'fli' | 'multi-round'; courseHoleCount?: number };
+
+const getStoredSeasons = (): { current: StoredSeason; upcoming: StoredSeason | null } | null => {
   try {
     const raw = window.localStorage.getItem(SEASON_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
-    return parsed && typeof parsed.name === 'string' && parsed.name.trim() ? parsed : null;
+    if (parsed?.current?.name?.trim()) {
+      return { current: parsed.current, upcoming: parsed.upcoming?.name?.trim() ? parsed.upcoming : null };
+    }
+    return parsed && typeof parsed.name === 'string' && parsed.name.trim() ? { current: parsed, upcoming: null } : null;
   } catch {
     return null;
   }
 };
 
-const storedSeason = getStoredSeason();
-if (storedSeason) {
-  seed = SeasonService.createNamedSeason(storedSeason.id, storedSeason.name, storedSeason.purseAmount);
+const storedSeasons = getStoredSeasons();
+if (storedSeasons) {
+  seed = SeasonService.createNamedSeason(storedSeasons.current.id, storedSeasons.current.name, storedSeasons.current.purseAmount, undefined, storedSeasons.current);
+  upcomingSeed = storedSeasons.upcoming
+    ? SeasonService.createNamedSeason(storedSeasons.upcoming.id, storedSeasons.upcoming.name, storedSeasons.upcoming.purseAmount, undefined, storedSeasons.upcoming)
+    : null;
   selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
 }
+
+const saveSeasons = (): void => {
+  window.localStorage.setItem(
+    SEASON_STORAGE_KEY,
+    JSON.stringify({
+      current: { id: seed.season.league.id, name: seed.season.league.name, purseAmount: seed.season.league.purseAmount, format: seed.format, courseHoleCount: seed.scoringHoleCount },
+      upcoming: upcomingSeed
+        ? { id: upcomingSeed.season.league.id, name: upcomingSeed.season.league.name, purseAmount: upcomingSeed.season.league.purseAmount, format: upcomingSeed.format, courseHoleCount: upcomingSeed.scoringHoleCount }
+        : null,
+    }),
+  );
+};
 
 const getStoredScorekeeperState = (): Partial<{
   assignments: Record<string, string>;
@@ -153,6 +178,55 @@ const resetScorekeeperState = (): void => {
 
 const resetAllMockData = (): void => {
   resetScorekeeperState();
+  resetFantasyDraft();
+  selectedTournamentIndex = 0;
+  selectedCourseNine = 'front';
+  seed = createStarterSeed();
+  upcomingSeed = createStarterUpcomingSeed();
+  selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
+  seasonFormMessage = '';
+  postStatusMessage = '';
+  contentPipeline = new ContentPipeline();
+  saveSeasons();
+  window.localStorage.removeItem(PRO_STORAGE_KEY);
+  window.localStorage.removeItem(USER_STORAGE_KEY);
+  setCurrentUser(proProfiles[0].id);
+  renderApp();
+};
+
+const isCurrentSeasonComplete = (): boolean =>
+  seed.schedule.getEvents().every((event) => Boolean(confirmedEventScores[event.result.id]));
+
+const promoteUpcomingSeason = (): void => {
+  if (!upcomingSeed || !isCurrentSeasonComplete()) {
+    return;
+  }
+
+  seed = upcomingSeed;
+  upcomingSeed = null;
+  selectedTournamentIndex = 0;
+  selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
+  selectedCourseNine = 'front';
+  resetScorekeeperState();
+  resetFantasyDraft();
+  saveSeasons();
+  seasonFormMessage = `${seed.season.league.name} is now the current season. Create the next upcoming season when ready.`;
+  renderApp();
+};
+
+const clearDevelopmentData = (): void => {
+  resetScorekeeperState();
+  resetFantasyDraft();
+  selectedTournamentIndex = 0;
+  selectedCourseNine = 'front';
+  seed = createEmptySeasonSeed();
+  upcomingSeed = null;
+  selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
+  seasonFormMessage = '';
+  postStatusMessage = '';
+  contentPipeline = new ContentPipeline();
+  window.localStorage.removeItem(SEASON_STORAGE_KEY);
+  window.localStorage.removeItem(PRO_STORAGE_KEY);
   window.localStorage.removeItem(USER_STORAGE_KEY);
   setCurrentUser(proProfiles[0].id);
   renderApp();
@@ -161,10 +235,10 @@ const resetAllMockData = (): void => {
 const seedAllGroupScoresForTesting = (): void => {
   scorekeeperScoresByHole = {};
   approvedGroups = {};
-  scorekeeperScoresByHole = generateGroupScoreSeed(scorekeeperGroupLabels, scorekeeperGroupLineups, 18);
+  scorekeeperScoresByHole = generateGroupScoreSeed(scorekeeperGroupLabels, scorekeeperGroupLineups, getScoringHoleCount());
 
   scorekeeperScoringStage = 'complete';
-  currentScoringHoleIndex = 17;
+  currentScoringHoleIndex = getScoringHoleCount() - 1;
   saveScorekeeperState();
   renderApp();
 };
@@ -277,15 +351,56 @@ const seedScoredEventAndDraft = (): void => {
     }
   }
 
-  scorekeeperScoresByHole = generateGroupScoreSeed(scorekeeperGroupLabels, scorekeeperGroupLineups, 18);
+  scorekeeperScoresByHole = generateGroupScoreSeed(scorekeeperGroupLabels, scorekeeperGroupLineups, getScoringHoleCount());
   scorekeeperScoringStage = 'complete';
-  currentScoringHoleIndex = 17;
+  currentScoringHoleIndex = getScoringHoleCount() - 1;
   scorekeeperGroupLabels.forEach((group) => {
     approvedGroups[group] = true;
   });
   finishOrder = normalizeFinishOrder(scorekeeperGroupLabels, finishOrder);
   finishOrder = getTeamFinishEntries().map((entry) => entry.teamName);
   confirmSelectedTournamentResults();
+};
+
+const seedCurrentSeasonResults = (): void => {
+  resetScorekeeperState();
+  resetFantasyDraft();
+  selectedTournamentIndex = 0;
+  syncScorekeeperGroupLineupsForSelectedTournament();
+  seedFantasyDraft();
+
+  for (let eventIndex = 0; eventIndex < getScheduledTournamentIds().length; eventIndex += 1) {
+    selectedTournamentIndex = eventIndex;
+    selectedDraftTournamentId = getScheduledTournamentIds()[eventIndex] ?? null;
+    syncScorekeeperGroupLineupsForSelectedTournament();
+
+    const room = getSelectedDraftRoom();
+    if (room && !room.isLocked()) {
+      while (room.getStatus() !== 'complete') {
+        const participantId = room.getParticipantOnTheClock();
+        const player = participantId ? room.getSelectablePlayers(participantId)[0] : null;
+        if (!participantId || !player) {
+          break;
+        }
+        room.pick(participantId, player.id);
+      }
+    }
+
+    scorekeeperScoresByHole = generateGroupScoreSeed(scorekeeperGroupLabels, scorekeeperGroupLineups, getScoringHoleCount());
+    scorekeeperScoringStage = 'complete';
+    currentScoringHoleIndex = getScoringHoleCount() - 1;
+    scorekeeperGroupLabels.forEach((group) => {
+      approvedGroups[group] = true;
+    });
+    finishOrder = getTeamFinishEntries().map((entry) => entry.teamName);
+    confirmSelectedTournamentResults();
+  }
+
+  selectedTournamentIndex = 0;
+  selectedDraftTournamentId = getScheduledTournamentIds()[0] ?? null;
+  syncScorekeeperGroupLineupsForSelectedTournament();
+  saveScorekeeperState();
+  renderApp();
 };
 
 // Mock ranking: teams are seeded strongest-first, so a player's slot within their gender is their rating.
@@ -596,7 +711,7 @@ const submitScorekeeperScoringForm = (form: HTMLFormElement, direction: 'next' |
     scorekeeperScoresByHole[currentScoringHoleIndex] = holeScores;
   }
 
-  if (currentScoringHoleIndex >= 17) {
+  if (currentScoringHoleIndex >= getScoringHoleCount() - 1) {
     scorekeeperScoringStage = 'complete';
   } else {
     currentScoringHoleIndex += 1;
@@ -717,7 +832,7 @@ const getAssignedGroupForUser = (user: UserProfile): string | null => {
 };
 
 const getRoleMenus = (user: UserProfile): Array<{ label: string; href: string; detail: string; isActive: boolean }> => {
-  const dashboardFilterOptions = ['Approve scores', 'Manage league', 'Scorekeeper assignment', 'Scorekeeper scorecard', 'Standings', 'Fantasy league', 'Draft controls', 'Fantasy roster', 'League activity', 'Post content', 'My team', 'My stats', 'Content review', 'Overview'];
+  const dashboardFilterOptions = ['Approve scores', 'Manage league', 'Scorekeeper assignment', 'Scorekeeper scorecard', 'Standings', 'Fantasy league', 'Draft controls', 'Fantasy roster', 'League activity', 'Post content', 'My team', 'My stats', 'Content review', 'Development', 'Overview'];
   const activeFilter = dashboardFilterOptions.includes(selectedDashboardFilter)
     ? selectedDashboardFilter
     : user.hasRole('leagueAdmin')
@@ -766,6 +881,8 @@ const getRoleMenus = (user: UserProfile): Array<{ label: string; href: string; d
   if (menus.length === 0) {
     menus.push({ label: 'Overview', href: '/', detail: 'Standard viewer access for reading the league.', isActive: true });
   }
+
+  menus.push({ label: 'Development', href: '/', detail: 'Load, clear, and seed mock league data.', isActive: activeFilter === 'Development' });
 
   return menus.map((menu) => ({ ...menu, isActive: menu.label === activeFilter }));
 };
@@ -834,6 +951,7 @@ const getRoleAccessSummary = (user: UserProfile): string[] => {
 };
 
 const hasSeason = (): boolean => seed.season.league.name.trim().length > 0;
+const getScoringHoleCount = (): number => seed.scoringHoleCount;
 
 const getSeasonDisplayName = (): string => seed.season.league.name.trim() || 'No season created yet';
 
@@ -873,32 +991,41 @@ const renderSeasonCreator = (): string => {
     return '';
   }
 
-  const currentTitleSponsor = seed.sponsorshipProgram.getTitleSponsorship();
-  const minimumTitleSponsorAmount = SeasonService.getMinimumTitleSponsorAmount();
+  const upcomingTitleSponsor = upcomingSeed?.sponsorshipProgram.getTitleSponsorship();
 
   return `
     <section class="panel">
-      <h2>${hasSeason() ? 'Create upcoming season' : 'Create season'}</h2>
+      <h2>Create upcoming season</h2>
       <form data-action="create-season" class="inline-form">
         <label>
           <span>Season name</span>
-          <input type="text" name="seasonName" value="${hasSeason() ? '' : seed.season.league.name}" placeholder="Winter Circuit" required />
+          <input type="text" name="seasonName" value="" placeholder="Winter Season" required />
         </label>
         <label>
           <span>Purse amount</span>
-          <input type="number" name="purseAmount" value="${seed.season.league.purseAmount ?? 4000000}" min="0" step="100000" />
+          <input type="number" name="purseAmount" value="${upcomingSeed?.season.league.purseAmount ?? 4000000}" min="0" step="100000" />
         </label>
         <label>
           <span>Title sponsor name</span>
-          <input type="text" name="titleSponsorName" value="${escapeHtml(currentTitleSponsor?.sponsor.name ?? '')}" placeholder="Northwind Outfitters" required />
+          <input type="text" name="titleSponsorName" value="${escapeHtml(upcomingTitleSponsor?.sponsor.name ?? '')}" placeholder="Northwind Outfitters" required />
         </label>
         <label>
-          <span>Title sponsor amount</span>
-          <input type="number" name="titleSponsorAmount" value="${currentTitleSponsor?.amount ?? minimumTitleSponsorAmount + 100_000}" min="${minimumTitleSponsorAmount + 1}" step="50000" required />
+          <span>Season style</span>
+          <select name="seasonFormat">
+            <option value="fli" ${upcomingSeed?.format !== 'multi-round' ? 'selected' : ''}>FLI Golf</option>
+            <option value="multi-round" ${upcomingSeed?.format === 'multi-round' ? 'selected' : ''}>MultiRound</option>
+          </select>
         </label>
-        <p class="role-access-note">The title sponsor must commit more than $${minimumTitleSponsorAmount.toLocaleString()} — it has to be the season's biggest sponsorship.</p>
+        <label>
+          <span>Course holes</span>
+          <input type="number" name="courseHoleCount" value="${upcomingSeed?.format === 'multi-round' ? upcomingSeed.scoringHoleCount : 18}" min="9" max="33" step="1" />
+        </label>
         <button type="submit">${hasSeason() ? 'Create upcoming season' : 'Create season'}</button>
       </form>
+      <div class="action-row" style="margin-top: 18px;">
+        <button type="button" class="primary-button" data-load-starter-data="true">Seed Summer + Winter seasons</button>
+        <button type="button" class="secondary-button" data-clear-development-data="true">Clear development data</button>
+      </div>
       ${seasonFormMessage ? `<p class="role-access-note">${escapeHtml(seasonFormMessage)}</p>` : ''}
     </section>
   `;
@@ -913,14 +1040,14 @@ const hasGroupSubmittedAllHoles = (group: string): boolean => {
     return false;
   }
 
-  return Array.from({ length: 18 }, (_, holeIndex) => holeIndex).every((holeIndex) => {
+  return Array.from({ length: getScoringHoleCount() }, (_, holeIndex) => holeIndex).every((holeIndex) => {
     const holeScores = scorekeeperScoresByHole[holeIndex] ?? {};
     return playerKeys.some((playerKey) => Object.prototype.hasOwnProperty.call(holeScores, playerKey));
   });
 };
 
 const renderPlayerScoreReviewMarkup = (groupName: string, playerName: string, teamName: string): string => {
-  const scorecard = buildGroupScorecard(groupName, scorekeeperGroupLineups[groupName] ?? [], scorekeeperScoresByHole);
+  const scorecard = buildGroupScorecard(groupName, scorekeeperGroupLineups[groupName] ?? [], scorekeeperScoresByHole, getScoringHoleCount());
   const playerRow = scorecard.find((row) => row.player === playerName && row.teamName === teamName);
 
   if (!playerRow) {
@@ -1329,7 +1456,7 @@ const refreshScoreEditModalFromSelection = (form: HTMLFormElement): void => {
   const playerName = playerInput.value;
   const teamName = teamInput.value;
   const parsedHoleNumber = Number.parseInt(holeInput.value, 10);
-  const holeNumber = Number.isFinite(parsedHoleNumber) ? Math.min(Math.max(parsedHoleNumber, 1), 18) : 1;
+  const holeNumber = Number.isFinite(parsedHoleNumber) ? Math.min(Math.max(parsedHoleNumber, 1), getScoringHoleCount()) : 1;
 
   if (!groupName || !playerName || !teamName) {
     return;
@@ -1360,7 +1487,7 @@ const renderScorekeeperDashboard = (): string => {
   const currentUser = getCurrentUser();
   const assignedCount = Object.values(scorekeeperAssignments).filter(Boolean).length;
   const pendingAssignments = scorekeeperGroupLabels.filter((group) => !scorekeeperAssignments[group]);
-  const totalHoles = 18;
+  const totalHoles = getScoringHoleCount();
   const teamFinishOrder = getOrderedTeamFinishList();
 
   if (selectedDashboardFilter === 'Standings') {
@@ -1402,7 +1529,7 @@ const renderScorekeeperDashboard = (): string => {
   if (scorekeeperScoringStage === 'complete') {
     const completedGroup = assignedGroup ?? scorekeeperGroupLabels[0] ?? 'Group A';
     const completedGroupLineups = scorekeeperGroupLineups[completedGroup] ?? [];
-    const completedScorecard = buildGroupScorecard(completedGroup, completedGroupLineups, scorekeeperScoresByHole);
+    const completedScorecard = buildGroupScorecard(completedGroup, completedGroupLineups, scorekeeperScoresByHole, totalHoles);
     const scorecardTableMarkup = completedScorecard
       .map(
         (playerRow) => `
@@ -1429,14 +1556,14 @@ const renderScorekeeperDashboard = (): string => {
           <span class="tee-time-badge">Saved</span>
         </div>
 
-        <p class="role-access-note">${completedGroup} — ${scorekeeperAssignments[completedGroup] ?? 'Unassigned'} · All 18 holes submitted.</p>
+        <p class="role-access-note">${completedGroup} — ${scorekeeperAssignments[completedGroup] ?? 'Unassigned'} · All ${totalHoles} holes submitted.</p>
 
         <div class="scorecard-summary-wrap">
           <table class="scorecard-table">
             <thead>
               <tr>
                 <th scope="col">Player</th>
-                ${Array.from({ length: 18 }, (_, index) => `<th scope="col">${index + 1}</th>`).join('')}
+                ${Array.from({ length: totalHoles }, (_, index) => `<th scope="col">${index + 1}</th>`).join('')}
                 <th scope="col">Total</th>
               </tr>
             </thead>
@@ -1560,7 +1687,7 @@ const renderScorekeeperDashboard = (): string => {
   const pipelineStats = [
     { label: 'Assigned', value: String(assignedCount) },
     { label: 'Groups left', value: String(pendingAssignments.length) },
-    { label: 'Round', value: '18 holes' },
+    { label: 'Round', value: `${totalHoles} holes` },
   ];
 
   return `
@@ -2348,6 +2475,23 @@ const renderSponsorshipPanel = (): string => {
   `;
 };
 
+const renderDevelopmentPanel = (): string => `
+  <section class="panel">
+    <p class="eyebrow">Development</p>
+    <h2>Mock data controls</h2>
+    <div class="action-row" style="margin-top: 18px;">
+      <button type="button" class="primary-button" data-load-starter-data="true">Load starter data</button>
+      <button type="button" class="primary-button" data-seed-current-season-results="true">Seed complete current season</button>
+      <button type="button" class="primary-button" data-seed-scored-event="true">Seed scored event + draft</button>
+      <button type="button" class="primary-button" data-seed-all-group-scores="true">Seed all group scores</button>
+      <button type="button" class="primary-button" data-seed-fantasy-draft="true">Seed fantasy draft</button>
+      <button type="button" class="secondary-button" data-reset-scorekeeper-state="true">Reset scorekeeping</button>
+      <button type="button" class="secondary-button" data-reset-fantasy-draft="true">Reset fantasy draft</button>
+      <button type="button" class="secondary-button" data-clear-development-data="true">Clear development data</button>
+    </div>
+  </section>
+`;
+
 const renderHomePage = (): string => {
   const currentUser = getCurrentUser();
   const selectedFilter = selectedDashboardFilter || 'Manage league';
@@ -2359,8 +2503,32 @@ const renderHomePage = (): string => {
     !currentUser.hasRole('fantasyLeagueOwner') &&
     !currentUser.hasRole('fantasyParticipant');
 
-  if (isProOnly) {
+  if (isProOnly && selectedFilter !== 'Development') {
     return renderProDashboard(currentUser);
+  }
+
+  if (selectedFilter === 'Development') {
+    return `
+      <main class="page-shell">
+        ${renderLoginPane()}
+
+        <header class="hero">
+          <div class="title-group">
+            <p class="eyebrow">Current season</p>
+            <div class="title-with-badges">
+              <h1>${getSeasonDisplayName()}</h1>
+              ${renderRoleBadges(currentUser)}
+            </div>
+          </div>
+        </header>
+
+        <section class="dashboard-layout">
+          <div class="dashboard-column">${renderDashboardMenus()}</div>
+        </section>
+
+        ${renderDevelopmentPanel()}
+      </main>
+    `;
   }
 
   if (selectedFilter === 'Content review' && (currentUser.hasRole('leagueAdmin') || currentUser.hasRole('siteAdmin'))) {
@@ -2531,6 +2699,7 @@ const renderHomePage = (): string => {
         <p class="role-access-note">Current season: <strong>${getSeasonDisplayName()}</strong></p>
         ${hasSeason() ? '' : '<p class="role-access-note">Name a season with the Create season form above to lock in this schedule.</p>'}
         <p class="role-access-note">Purse: <strong>$${(seed.season.league.purseAmount ?? 4000000).toLocaleString()}</strong></p>
+        <p class="role-access-note">Title sponsor: <strong>${escapeHtml(seed.sponsorshipProgram.getTitleSponsorship()?.sponsor.name ?? 'Unassigned')}</strong></p>
         <p class="role-access-note">Tee times begin at 3:00 PM PST and run every 10 minutes until the last group.</p>
         <ul class="list-block">
           ${tournamentEntries
@@ -2556,6 +2725,26 @@ const renderHomePage = (): string => {
         </ul>
         <p class="role-access-note">Scorekeeping is the next phase after tournament timing is locked in.</p>
       </section>
+
+      ${upcomingSeed
+        ? `
+          <section class="panel">
+            <h2>Upcoming season &amp; tournaments</h2>
+            <p class="role-access-note">Upcoming season: <strong>${escapeHtml(upcomingSeed.season.league.name)}</strong></p>
+            <p class="role-access-note">Purse: <strong>$${(upcomingSeed.season.league.purseAmount ?? 4_000_000).toLocaleString()}</strong></p>
+            <p class="role-access-note">Title sponsor: <strong>${escapeHtml(upcomingSeed.sponsorshipProgram.getTitleSponsorship()?.sponsor.name ?? 'Unassigned')}</strong></p>
+            <ul class="list-block">
+              ${upcomingSeed.schedule
+                .getEvents()
+                .map((event) => `<li><strong>${event.date}</strong> — ${escapeHtml(event.result.name)}${event.courseName ? ` <span class="course-assignment">· Played at: ${escapeHtml(event.courseName)}</span>` : ''}</li>`)
+                .join('')}
+            </ul>
+            <div class="action-row" style="margin-top: 18px;">
+              <button type="button" class="primary-button" data-promote-upcoming-season="true" ${isCurrentSeasonComplete() ? '' : 'disabled aria-disabled="true"'}>Make ${escapeHtml(upcomingSeed.season.league.name)} current</button>
+            </div>
+          </section>
+        `
+        : ''}
 
       ${renderSponsorshipPanel()}
 
@@ -3688,7 +3877,7 @@ app.addEventListener('click', (event) => {
     }
 
     const currentHole = Number.parseInt(holeInput.value, 10) || 1;
-    const nextHole = Math.min(Math.max(currentHole + (holeEditButton.getAttribute('data-action') === 'increment-hole-edit' ? 1 : -1), 1), 18);
+    const nextHole = Math.min(Math.max(currentHole + (holeEditButton.getAttribute('data-action') === 'increment-hole-edit' ? 1 : -1), 1), getScoringHoleCount());
     holeInput.value = String(nextHole);
     refreshScoreEditModalFromSelection(form);
     return;
@@ -3934,6 +4123,12 @@ app.addEventListener('click', (event) => {
     return;
   }
 
+  const seedCurrentSeasonResultsButton = event.target instanceof HTMLElement ? event.target.closest('[data-seed-current-season-results]') : null;
+  if (seedCurrentSeasonResultsButton) {
+    seedCurrentSeasonResults();
+    return;
+  }
+
   const advanceDraftButton = event.target instanceof HTMLElement ? event.target.closest('[data-advance-draft]') : null;
   if (advanceDraftButton) {
     advanceFantasyDraftPicks(Number(advanceDraftButton.getAttribute('data-advance-draft')) || 1);
@@ -3988,6 +4183,24 @@ app.addEventListener('click', (event) => {
   const resetAllDataButton = event.target instanceof HTMLElement ? event.target.closest('[data-reset-all-mock-data]') : null;
   if (resetAllDataButton) {
     resetAllMockData();
+    return;
+  }
+
+  const loadStarterDataButton = event.target instanceof HTMLElement ? event.target.closest('[data-load-starter-data]') : null;
+  if (loadStarterDataButton) {
+    resetAllMockData();
+    return;
+  }
+
+  const clearDevelopmentDataButton = event.target instanceof HTMLElement ? event.target.closest('[data-clear-development-data]') : null;
+  if (clearDevelopmentDataButton) {
+    clearDevelopmentData();
+    return;
+  }
+
+  const promoteUpcomingSeasonButton = event.target instanceof HTMLElement ? event.target.closest('[data-promote-upcoming-season]') : null;
+  if (promoteUpcomingSeasonButton) {
+    promoteUpcomingSeason();
     return;
   }
 
@@ -4069,9 +4282,10 @@ app.addEventListener('submit', (event) => {
     const seasonName = form.querySelector('input[name="seasonName"]') as HTMLInputElement | null;
     const purseInput = form.querySelector('input[name="purseAmount"]') as HTMLInputElement | null;
     const titleSponsorNameInput = form.querySelector('input[name="titleSponsorName"]') as HTMLInputElement | null;
-    const titleSponsorAmountInput = form.querySelector('input[name="titleSponsorAmount"]') as HTMLInputElement | null;
+    const seasonFormatInput = form.querySelector('select[name="seasonFormat"]') as HTMLSelectElement | null;
+    const courseHoleCountInput = form.querySelector('input[name="courseHoleCount"]') as HTMLInputElement | null;
     const currentUser = getCurrentUser();
-    if (!seasonName || !purseInput || !titleSponsorNameInput || !titleSponsorAmountInput || !SeasonService.canCreateSeason(currentUser)) {
+    if (!seasonName || !purseInput || !titleSponsorNameInput || !seasonFormatInput || !courseHoleCountInput || !SeasonService.canCreateSeason(currentUser)) {
       return;
     }
 
@@ -4085,40 +4299,36 @@ app.addEventListener('submit', (event) => {
     }
 
     const trimmedTitleSponsorName = titleSponsorNameInput.value.trim();
-    const titleSponsorAmount = Number(titleSponsorAmountInput.value);
     if (!trimmedTitleSponsorName) {
       seasonFormMessage = 'Enter a title sponsor before creating the season.';
       titleSponsorNameInput.focus();
       renderApp();
       return;
     }
-    if (!Number.isFinite(titleSponsorAmount) || titleSponsorAmount <= 0) {
-      seasonFormMessage = 'Enter a valid title sponsor amount.';
-      titleSponsorAmountInput.focus();
-      renderApp();
-      return;
-    }
 
     const seasonId = `season-${Date.now()}`;
     const purseAmount = Number.isFinite(purseValue) && purseValue > 0 ? purseValue : 4_000_000;
+    const format = seasonFormatInput.value === 'multi-round' ? 'multi-round' : 'fli';
+    const courseHoleCount = Number(courseHoleCountInput.value);
 
     let nextSeed;
     try {
       nextSeed = SeasonService.createNamedSeason(seasonId, trimmedName, purseAmount, {
         name: trimmedTitleSponsorName,
-        amount: titleSponsorAmount,
+      }, {
+        format,
+        courseHoleCount,
       });
     } catch (error) {
       seasonFormMessage = error instanceof Error ? error.message : 'Unable to create the season.';
-      titleSponsorAmountInput.focus();
+      titleSponsorNameInput.focus();
       renderApp();
       return;
     }
 
-    seed = nextSeed;
-    selectedCourseId = seed.courseOptions?.[0]?.id ?? seed.course.id;
-    window.localStorage.setItem(SEASON_STORAGE_KEY, JSON.stringify({ id: seasonId, name: trimmedName, purseAmount }));
-    seasonFormMessage = `Season "${trimmedName}" is live with ${trimmedTitleSponsorName} as title sponsor.`;
+    upcomingSeed = nextSeed;
+    saveSeasons();
+    seasonFormMessage = `Upcoming season "${trimmedName}" is ready with ${trimmedTitleSponsorName} as title sponsor.`;
     renderApp();
     return;
   }
@@ -4186,7 +4396,7 @@ app.addEventListener('submit', (event) => {
     const playerKey = `${groupName.value}|${teamName.value}|${playerName.value}`;
     const storedValue = convertDisplayedHoleValueToStoredScore(valueInput.value);
 
-    if (Number.isInteger(holeNumber) && holeNumber >= 1 && holeNumber <= 18) {
+    if (Number.isInteger(holeNumber) && holeNumber >= 1 && holeNumber <= getScoringHoleCount()) {
       if (!scorekeeperScoresByHole[holeNumber - 1]) {
         scorekeeperScoresByHole[holeNumber - 1] = {};
       }
