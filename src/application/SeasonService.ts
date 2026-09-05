@@ -26,6 +26,19 @@ export type HolePrizeMetadata = {
 
 export type FantasyLeagueSeed = FantasyLeague;
 
+export type FantasyLeagueProgressionEntry = {
+  participantId: string;
+  participantName: string;
+  total: number;
+  rank: number;
+};
+
+export type FantasyLeagueProgression = {
+  leagueId: string;
+  leagueName: string;
+  standings: readonly FantasyLeagueProgressionEntry[];
+};
+
 export type TitleSponsorInput = {
   name: string;
   amount?: number;
@@ -36,6 +49,8 @@ export type SeasonFormat = 'fli' | 'multi-round';
 export type SeasonFormatInput = {
   format?: SeasonFormat;
   courseHoleCount?: number;
+  courseLayout?: 'blue' | 'red';
+  fantasyLeagueCount?: number;
 };
 
 export type ReservePro = {
@@ -68,6 +83,7 @@ export type RealisticLeagueSeed = {
   season: SeasonBootstrapResult;
   format: SeasonFormat;
   scoringHoleCount: number;
+  courseLayout: 'blue' | 'red';
   course: Course;
   courseOptions: readonly Course[];
   tournamentNames: readonly string[];
@@ -78,6 +94,7 @@ export type RealisticLeagueSeed = {
   realLeagueTeams: readonly Team[];
   reservePros: readonly ReservePro[];
   fantasyLeagues: readonly FantasyLeagueSeed[];
+  progressedStandings: readonly FantasyLeagueProgression[];
   payoutBreakdown: SeasonPayoutBreakdown;
 };
 
@@ -114,6 +131,17 @@ export class SeasonService {
 
   static createNamedSeason(id: string, name: string, purseAmount = 4_000_000, titleSponsor?: TitleSponsorInput, formatInput?: SeasonFormatInput): RealisticLeagueSeed {
     return SeasonService.createRealisticLeagueSeed(id, name, purseAmount, titleSponsor, formatInput);
+  }
+
+  static areAllEventsConfirmed(
+    confirmedEventScores: Record<string, Record<string, number> | undefined>,
+    eventIds: readonly string[],
+  ): boolean {
+    if (eventIds.length === 0) {
+      return true;
+    }
+
+    return eventIds.every((eventId) => Boolean(confirmedEventScores[eventId] && Object.keys(confirmedEventScores[eventId] ?? {}).length > 0));
   }
 
   static getEventPayoutAmount(eventIndex: number, finishPosition: number, payoutBreakdown: SeasonPayoutBreakdown = SeasonService.createProgressivePayoutBreakdown()): number {
@@ -176,6 +204,39 @@ export class SeasonService {
       : ['Sunset Open', 'Canyon Heat Cup', 'Summer Solstice Invitational', 'High Desert Classic', 'Mesa Flight Showdown', 'Summer Championship'];
   }
 
+  static createProgressedFantasyStandings(
+    leagueSeeds: readonly { id: string; name: string; participants: readonly UserProfile[] }[],
+  ): readonly FantasyLeagueProgression[] {
+    return leagueSeeds.map(({ id, name, participants }, leagueIndex) => {
+      const scores = [
+        -12 + leagueIndex,
+        -8 + leagueIndex,
+        -5 + leagueIndex,
+        -1 + leagueIndex,
+        4 + leagueIndex,
+        8 + leagueIndex,
+      ];
+
+      const standings = participants
+        .map((participant, participantIndex) => ({
+          participantId: participant.id,
+          participantName: participant.displayName,
+          total: scores[participantIndex] ?? 0,
+          rank: 0,
+        }))
+        .sort((left, right) => left.total - right.total || left.participantId.localeCompare(right.participantId));
+
+      return {
+        leagueId: id,
+        leagueName: name,
+        standings: standings.map((entry, index) => ({
+          ...entry,
+          rank: index + 1,
+        })),
+      };
+    });
+  }
+
   static createDemoSeason(id: string, name: string, purseAmount = 4_000_000): SeasonBootstrapResult {
     const users = [
       new UserProfile('u-1', 'Jamie Reed', 'jamie@example.com'),
@@ -221,10 +282,19 @@ export class SeasonService {
 
   static createRealisticLeagueSeed(id: string, name: string, purseAmount = 4_000_000, titleSponsor?: TitleSponsorInput, formatInput?: SeasonFormatInput): RealisticLeagueSeed {
     const format = formatInput?.format ?? 'fli';
-    const requestedCourseHoleCount = formatInput?.courseHoleCount ?? 18;
-    if (!Number.isInteger(requestedCourseHoleCount) || requestedCourseHoleCount < 9 || requestedCourseHoleCount > 33) {
+    const courseLayout = formatInput?.courseLayout ?? 'blue';
+    const fantasyLeagueCount = Math.max(2, Math.min(10, formatInput?.fantasyLeagueCount ?? 2));
+    const requestedCourseHoleCount = formatInput?.courseHoleCount ?? (format === 'multi-round' ? 18 : 9);
+    const normalizedFliCourseHoleCount = format === 'fli' && requestedCourseHoleCount === 18 ? 9 : requestedCourseHoleCount;
+
+    if (format === 'fli') {
+      if (!Number.isInteger(normalizedFliCourseHoleCount) || ![9, 18].includes(normalizedFliCourseHoleCount)) {
+        throw new Error('A FLI course must use exactly 9 holes and then repeat the same nine with an intermission.');
+      }
+    } else if (!Number.isInteger(requestedCourseHoleCount) || requestedCourseHoleCount < 9 || requestedCourseHoleCount > 33) {
       throw new Error('A MultiRound course must contain from 9 to 33 holes.');
     }
+
     const scoringHoleCount = format === 'multi-round' ? requestedCourseHoleCount : 18;
     const titleSponsorAmount = titleSponsor?.amount ?? 1_500_000;
     if (titleSponsor && titleSponsorAmount <= SeasonService.PRESENTING_SPONSOR_AMOUNT) {
@@ -233,8 +303,8 @@ export class SeasonService {
 
     const season = SeasonService.createDemoSeason(id, name, purseAmount);
 
-    let course = new Course('course-turf-paradise', 'Turf Paradise');
-    const alternateCourse = new Course('course-arizona-athletic-grounds', 'Arizona Athletic Grounds');
+    let course = new Course('course-turf-paradise', 'Turf Paradise', courseLayout);
+    const alternateCourse = new Course('course-arizona-athletic-grounds', 'Arizona Athletic Grounds', courseLayout === 'blue' ? 'red' : 'blue');
     const sponsorA = new Sponsor('s-1', "America's Mobile", 'Wireless Mobile • $100,000 • LOI Signed', 'https://example.com/americas-mobile.png');
     const sponsorB = new Sponsor('s-2', 'Sur Coffee', 'Beverage • $125,000 • LOI Signed', 'https://example.com/sur-coffee.png');
     const sponsorC = new Sponsor('s-3', 'SCCG Management', 'Advisory Partner • $500,000 to $900,000 • LOI Signed', 'https://example.com/sccg-management.png');
@@ -348,7 +418,7 @@ export class SeasonService {
     const courseOptions = [course, alternateCourse];
 
     if (format === 'multi-round') {
-      const multiRoundCourse = new Course(`${id}-multi-round-course`, `${name || 'Season'} Course`);
+      const multiRoundCourse = new Course(`${id}-multi-round-course`, `${name || 'Season'} Course`, courseLayout);
       const holeNames = ['Opening Line', 'Fairway Bend', 'Cedar Lane', 'Ridge Run', 'Valley Approach', 'Pine Point', 'Summit Drive', 'Creek Crossing', 'Final Green'];
       for (let index = 0; index < scoringHoleCount; index += 1) {
         const number = index + 1;
@@ -416,23 +486,30 @@ export class SeasonService {
       { id: 'reserve-4', displayName: 'Stevie Mickelson', email: 'stevie@fli.example.com', gender: 'female', reason: 'Injury relief' },
     ];
 
-    const fantasyLeagues: FantasyLeagueSeed[] = [
-      new FantasyLeague(
-        `${id}-fantasy-1`,
-        'Sundown Six',
-        Array.from({ length: 6 }, (_, index) => new UserProfile(`fantasy-${index + 1}`, `Fantasy ${index + 1}`, `fantasy${index + 1}@example.com`)),
-      ),
-      new FantasyLeague(
-        `${id}-fantasy-2`,
-        'Ridge Roster',
-        Array.from({ length: 6 }, (_, index) => new UserProfile(`fantasy-b-${index + 1}`, `Fantasy B ${index + 1}`, `fantasyb${index + 1}@example.com`)),
-      ),
-    ];
+    const fantasyParticipants = Array.from({ length: fantasyLeagueCount * 6 }, (_, index) =>
+      new UserProfile(`fantasy-${index + 1}`, `Fantasy League ${Math.floor(index / 6) + 1} Participant ${index % 6 + 1}`, `fantasy${index + 1}@example.com`),
+    );
+
+    const fantasyLeagueDefinitions = Array.from({ length: fantasyLeagueCount }, (_, leagueIndex) => {
+      const leagueParticipants = fantasyParticipants.slice(leagueIndex * 6, (leagueIndex + 1) * 6);
+      return {
+        id: `${id}-fantasy-${leagueIndex + 1}`,
+        name: `${name} League ${leagueIndex + 1}`,
+        participants: leagueParticipants,
+      };
+    });
+
+    const fantasyLeagues: FantasyLeagueSeed[] = fantasyLeagueDefinitions.map(({ id: leagueId, name: leagueName, participants }) =>
+      new FantasyLeague(leagueId, leagueName, participants),
+    );
+
+    const progressedStandings = SeasonService.createProgressedFantasyStandings(fantasyLeagueDefinitions);
 
     return {
       season,
       format,
       scoringHoleCount,
+      courseLayout,
       course,
       courseOptions,
       tournamentNames,
@@ -443,6 +520,7 @@ export class SeasonService {
       realLeagueTeams,
       reservePros,
       fantasyLeagues,
+      progressedStandings,
       payoutBreakdown: SeasonService.createProgressivePayoutBreakdown(purseAmount, name),
     };
   }

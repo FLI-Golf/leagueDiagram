@@ -323,6 +323,18 @@ form[data-action='create-season'] label span {
   border-style: dashed;
 }
 
+.season-badge {
+  background: rgba(251, 146, 60, 0.18);
+  color: #ffedd5;
+  border-color: rgba(251, 146, 60, 0.45);
+}
+
+.season-past {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
 .draft-board {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));

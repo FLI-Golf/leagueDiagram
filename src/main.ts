@@ -4,6 +4,7 @@ import { resolveAppRoute, getProPlayers, getTeamSummaries } from './application/
 import { areAllGroupsApproved, normalizeFinishOrder, sortTeamsByScore } from './application/FinishOrder';
 import { buildGroupScorecard, convertDisplayedHoleValueToStoredScore, getDisplayedHoleValueForPlayer, normalizeScoreEditValue } from './application/ScorecardSummary';
 import { SeasonService } from './application/SeasonService';
+import { getNextTournamentIndex, hasNextTournament } from './application/TournamentProgress';
 import { MockDraftSeries } from './domain/draft/MockDraftSeries';
 import { DraftRoom } from './domain/draft/DraftRoom';
 import { Group } from './domain/pipeline/Group';
@@ -15,9 +16,9 @@ import type { SponsorshipScope, SponsorshipTier } from './domain/sponsorship/Spo
 import type { ContentMedia, ContentStatus, ContentSubmission } from './domain/pipeline/ContentPipeline';
 import { UserProfile } from './domain/user/UserProfile';
 
-const createStarterSeed = () => SeasonService.createNamedSeason('league-demo', 'Summer Season', 4_000_000);
-const createStarterUpcomingSeed = () => SeasonService.createNamedSeason('league-demo-upcoming', 'Winter Season', 8_000_000);
-const createEmptySeasonSeed = () => SeasonService.createNamedSeason('league-empty', '', 4_000_000);
+const createStarterSeed = () => SeasonService.createNamedSeason('league-demo', 'Summer Season', 4_000_000, undefined, { fantasyLeagueCount: 10 });
+const createStarterUpcomingSeed = () => SeasonService.createNamedSeason('league-demo-upcoming', 'Summer 2 Season', 8_000_000, undefined, { fantasyLeagueCount: 10 });
+const createEmptySeasonSeed = () => SeasonService.createNamedSeason('league-empty', '', 4_000_000, undefined, { fantasyLeagueCount: 10 });
 
 let seed = createStarterSeed();
 let upcomingSeed: ReturnType<typeof createStarterSeed> | null = createStarterUpcomingSeed();
@@ -27,6 +28,7 @@ let selectedCourseNine = 'front';
 let selectedDashboardFilter = 'Manage league';
 let postStatusMessage = '';
 let seasonFormMessage = '';
+let tournamentTransitionMessage = '';
 const scorekeeperStaff = ['Ava Park', 'Diego Ruiz', 'Renee Walsh', 'Maya Brooks', 'Noah Chen', 'Jamie Lopez'];
 const scorekeeperGroupLabels = ['Group A', 'Group B', 'Group C', 'Group D', 'Group E', 'Group F'];
 const defaultScorekeeperAssignments: Record<string, string> = {
@@ -86,7 +88,14 @@ const PRO_STORAGE_KEY = 'league-demo-pro-fan-posts';
 const USER_STORAGE_KEY = 'league-demo-current-user';
 const SEASON_STORAGE_KEY = 'league-demo-season';
 
-type StoredSeason = { id: string; name: string; purseAmount: number; format?: 'fli' | 'multi-round'; courseHoleCount?: number };
+type StoredSeason = {
+  id: string;
+  name: string;
+  purseAmount: number;
+  format?: 'fli' | 'multi-round';
+  courseHoleCount?: number;
+  courseLayout?: 'blue' | 'red';
+};
 
 const getStoredSeasons = (): { current: StoredSeason; upcoming: StoredSeason | null } | null => {
   try {
@@ -114,9 +123,23 @@ const saveSeasons = (): void => {
   window.localStorage.setItem(
     SEASON_STORAGE_KEY,
     JSON.stringify({
-      current: { id: seed.season.league.id, name: seed.season.league.name, purseAmount: seed.season.league.purseAmount, format: seed.format, courseHoleCount: seed.scoringHoleCount },
+      current: {
+        id: seed.season.league.id,
+        name: seed.season.league.name,
+        purseAmount: seed.season.league.purseAmount,
+        format: seed.format,
+        courseHoleCount: seed.scoringHoleCount,
+        courseLayout: seed.courseLayout,
+      },
       upcoming: upcomingSeed
-        ? { id: upcomingSeed.season.league.id, name: upcomingSeed.season.league.name, purseAmount: upcomingSeed.season.league.purseAmount, format: upcomingSeed.format, courseHoleCount: upcomingSeed.scoringHoleCount }
+        ? {
+            id: upcomingSeed.season.league.id,
+            name: upcomingSeed.season.league.name,
+            purseAmount: upcomingSeed.season.league.purseAmount,
+            format: upcomingSeed.format,
+            courseHoleCount: upcomingSeed.scoringHoleCount,
+            courseLayout: upcomingSeed.courseLayout,
+          }
         : null,
     }),
   );
@@ -162,6 +185,19 @@ const saveScorekeeperState = (): void => {
   }
 };
 
+const clearSelectedTournamentReviewState = (showTransitionMessage = false): void => {
+  scorekeeperScoringStage = 'assignment';
+  currentScoringHoleIndex = 0;
+  scorekeeperScoresByHole = {};
+  approvedGroups = {};
+  finishOrder = [...scorekeeperGroupLabels];
+  teamPlayoffDistances = {};
+  teamFinishOrderConfirmed = false;
+  selectedApprovalGroup = scorekeeperGroupLabels[0] ?? '';
+  tournamentTransitionMessage = showTransitionMessage ? 'New tournament — scorecards reset' : '';
+  saveScorekeeperState();
+};
+
 const resetScorekeeperState = (): void => {
   scorekeeperAssignments = { ...defaultScorekeeperAssignments };
   scorekeeperScoringStage = 'assignment';
@@ -195,7 +231,10 @@ const resetAllMockData = (): void => {
 };
 
 const isCurrentSeasonComplete = (): boolean =>
-  seed.schedule.getEvents().every((event) => Boolean(confirmedEventScores[event.result.id]));
+  SeasonService.areAllEventsConfirmed(
+    confirmedEventScores,
+    seed.schedule.getEvents().map((event) => event.result.id),
+  );
 
 const promoteUpcomingSeason = (): void => {
   if (!upcomingSeed || !isCurrentSeasonComplete()) {
@@ -955,6 +994,14 @@ const getScoringHoleCount = (): number => seed.scoringHoleCount;
 
 const getSeasonDisplayName = (): string => seed.season.league.name.trim() || 'No season created yet';
 
+const renderSeasonStateBadge = (): string => {
+  if (!upcomingSeed || !isCurrentSeasonComplete()) {
+    return '';
+  }
+
+  return '<span class="role-badge season-badge season-past">Past season</span>';
+};
+
 const getSeasonWorkspaceTitle = (): string => (hasSeason() ? `${seed.season.league.name.trim()} season workspace` : 'Season workspace');
 
 const renderDashboardMenus = (): string => {
@@ -1017,8 +1064,23 @@ const renderSeasonCreator = (): string => {
           </select>
         </label>
         <label>
-          <span>Course holes</span>
-          <input type="number" name="courseHoleCount" value="${upcomingSeed?.format === 'multi-round' ? upcomingSeed.scoringHoleCount : 18}" min="9" max="33" step="1" />
+          <span>Course layout</span>
+          <select name="courseLayout">
+            <option value="blue" ${(upcomingSeed?.courseLayout ?? 'blue') === 'blue' ? 'selected' : ''}>Blue basket setup</option>
+            <option value="red" ${(upcomingSeed?.courseLayout ?? 'blue') === 'red' ? 'selected' : ''}>Red basket setup</option>
+          </select>
+        </label>
+        <label>
+          <span>Course length</span>
+          <input
+            type="number"
+            name="courseHoleCount"
+            value="${upcomingSeed?.format === 'multi-round' ? upcomingSeed.scoringHoleCount : 18}"
+            min="9"
+            max="33"
+            step="1"
+          />
+          <small style="opacity: 0.8;">FLI Golf uses the Blue/Red basket setup on a 9-hole loop replayed for an 18-hole round. MultiRound keeps each round at 18 holes, with 9–33 holes available and 1–5 rounds possible.</small>
         </label>
         <button type="submit">${hasSeason() ? 'Create upcoming season' : 'Create season'}</button>
       </form>
@@ -1209,6 +1271,7 @@ const renderAdminApprovalDashboard = (): string => {
   const activeTournamentIndex = Math.min(Math.max(selectedTournamentIndex, 0), Math.max(tournamentEntries.length - 1, 0));
   const totalPaidOutAmount = payoutBreakdown.events[activeTournamentIndex]?.eventTotal ?? payoutBreakdown.totalPurse;
   const activeTournament = tournamentEntries[activeTournamentIndex] ?? tournamentEntries[0];
+  const canAdvanceToNextTournament = hasNextTournament(activeTournamentIndex, tournamentEntries.length);
 
   const pendingApprovalGroups = scorekeeperGroupLabels.map((group) => {
     const isReady = hasGroupSubmittedAllHoles(group);
@@ -1264,6 +1327,12 @@ const renderAdminApprovalDashboard = (): string => {
         <span class="tee-time-badge">Review</span>
       </div>
 
+      <div class="action-row" style="margin-top: 12px; margin-bottom: 12px;">
+        <button type="button" class="primary-button" data-seed-current-season-results="true">Full season seed</button>
+        <button type="button" class="secondary-button" data-seed-scored-event="true">Single event seed</button>
+      </div>
+
+      ${tournamentTransitionMessage ? `<p class="role-access-note" style="color: #86efac; margin-bottom: 0.75rem;">${tournamentTransitionMessage}</p>` : ''}
       <div class="group-grid group-grid--single">
         ${pendingApprovalGroups
           .map(
@@ -1376,6 +1445,23 @@ const renderAdminApprovalDashboard = (): string => {
         </div>
       ` : ''}
 
+      ${isCurrentSeasonComplete() && upcomingSeed ? `
+        <div class="group-card" style="margin-top: 18px;">
+          <div class="section-header-row">
+            <div>
+              <p class="eyebrow">Season summary</p>
+              <h3>${escapeHtml(seed.season.league.name)} is complete</h3>
+            </div>
+            <span class="tee-time-badge">Past</span>
+          </div>
+          <p class="role-access-note">All ${seed.schedule.getEvents().length} events are confirmed.</p>
+          <p class="role-access-note">Season purse: <strong>$${(seed.season.league.purseAmount ?? 0).toLocaleString()}</strong></p>
+          <p class="role-access-note">Total payouts issued: <strong>$${(payoutBreakdown.events ?? []).reduce((sum, event) => sum + event.eventTotal, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
+          <p class="role-access-note">Next in line: <strong>${escapeHtml(upcomingSeed.season.league.name)}</strong></p>
+          <button type="button" class="primary-button" data-promote-upcoming-season="true">Set ${escapeHtml(seed.season.league.name)} to past and make ${escapeHtml(upcomingSeed.season.league.name)} current</button>
+        </div>
+      ` : ''}
+
       <dialog id="score-edit-modal" aria-labelledby="score-edit-title">
         <form method="dialog" data-action="edit-player-score" class="panel" style="padding: 1.25rem; min-width: min(420px, 90vw);">
           <div class="section-header-row">
@@ -1433,6 +1519,7 @@ const renderAdminApprovalDashboard = (): string => {
       <div class="action-row" style="margin-top: 18px;">
         <button type="button" class="primary-button" data-seed-all-group-scores="true">Seed all group scores</button>
         <button type="button" class="primary-button" data-approve-all-scores="true" ${!allGroupsSubmitted ? 'disabled aria-disabled="true"' : ''}>Approve all scores</button>
+        ${teamFinishOrderConfirmed && canAdvanceToNextTournament ? `<button type="button" class="primary-button" data-next-tournament="true">Next tournament</button>` : ''}
         <button type="button" class="secondary-button" data-reset-scorekeeper-state="true">Reset mock scorekeeper state</button>
         <button type="button" class="secondary-button" data-reset-all-mock-data="true">Reset all mock data</button>
       </div>
@@ -2141,6 +2228,29 @@ const renderFantasyStandings = (): string => {
   }
 
   if (confirmedTournamentIds.length === 0) {
+    const seededProgression = seed.progressedStandings?.[0];
+    if (seededProgression) {
+      return `
+        <div class="assignment-summary" style="margin-top: 12px;">
+          <strong>Fantasy standings</strong>
+          <p class="role-access-note">Demo progression for ${escapeHtml(seededProgression.leagueName)} · no approved scores yet.</p>
+          <ol class="draft-pick-log">
+            ${seededProgression.standings
+              .map(
+                (standing, index) => `
+                  <li>
+                    <span class="draft-pick-slot">${standing.rank}</span>
+                    <strong>${escapeHtml(standing.participantName)}</strong>
+                    <span class="draft-pick-player">${formatRelativeToPar(standing.total)} · ${escapeHtml(getDraftDisplayName(standing.participantId))}</span>
+                  </li>
+                `,
+              )
+              .join('')}
+          </ol>
+        </div>
+      `;
+    }
+
     return `
       <div class="assignment-summary" style="margin-top: 12px;">
         <strong>Fantasy standings</strong>
@@ -2411,6 +2521,7 @@ const renderProDashboard = (user: UserProfile): string => {
           <p class="eyebrow">Current season</p>
           <div class="title-with-badges">
             <h1>${getSeasonDisplayName()}</h1>
+            ${renderSeasonStateBadge()}
             ${renderRoleBadges(user)}
           </div>
         </div>
@@ -2517,6 +2628,7 @@ const renderHomePage = (): string => {
             <p class="eyebrow">Current season</p>
             <div class="title-with-badges">
               <h1>${getSeasonDisplayName()}</h1>
+              ${renderSeasonStateBadge()}
               ${renderRoleBadges(currentUser)}
             </div>
           </div>
@@ -2541,6 +2653,7 @@ const renderHomePage = (): string => {
             <p class="eyebrow">Current season</p>
             <div class="title-with-badges">
               <h1>${getSeasonDisplayName()}</h1>
+              ${renderSeasonStateBadge()}
               ${renderRoleBadges(currentUser)}
             </div>
           </div>
@@ -2565,6 +2678,7 @@ const renderHomePage = (): string => {
             <p class="eyebrow">Current season</p>
             <div class="title-with-badges">
               <h1>${getSeasonDisplayName()}</h1>
+              ${renderSeasonStateBadge()}
               ${renderRoleBadges(currentUser)}
             </div>
           </div>
@@ -2589,6 +2703,7 @@ const renderHomePage = (): string => {
             <p class="eyebrow">Current season</p>
             <div class="title-with-badges">
               <h1>${getSeasonDisplayName()}</h1>
+              ${renderSeasonStateBadge()}
               ${renderRoleBadges(currentUser)}
             </div>
           </div>
@@ -2683,6 +2798,7 @@ const renderHomePage = (): string => {
           <p class="eyebrow">Current season</p>
           <div class="title-with-badges">
             <h1>${getSeasonDisplayName()}</h1>
+            ${renderSeasonStateBadge()}
             ${renderRoleBadges(currentUser)}
           </div>
         </div>
@@ -2901,7 +3017,7 @@ const renderHomePage = (): string => {
         </div>
         <div class="selected-course-detail">
           <h3>${selectedCourse.name}</h3>
-          <p>${selectedCourse.getHoles().length} holes · ${selectedCourseNine === 'back' ? 'Back nine' : 'Front nine'} · ${basketSetupLabel}</p>
+          <p>${selectedCourse.getHoles().length} holes · ${selectedCourseNine === 'back' ? 'Back nine' : 'Front nine'} · ${basketSetupLabel} (basket setup identifier)</p>
           <ul class="hole-list">${holeCards}</ul>
         </div>
       </section>
@@ -3787,6 +3903,7 @@ app.addEventListener('click', (event) => {
     const nextIndex = Number(scheduleChoice.getAttribute('data-event-index'));
     if (!Number.isNaN(nextIndex)) {
       selectedTournamentIndex = nextIndex;
+      clearSelectedTournamentReviewState();
       syncScorekeeperGroupLineupsForSelectedTournament();
       renderApp();
     }
@@ -4072,6 +4189,18 @@ app.addEventListener('click', (event) => {
     return;
   }
 
+  const nextTournamentButton = event.target instanceof HTMLElement ? event.target.closest('[data-next-tournament]') : null;
+  if (nextTournamentButton) {
+    const tournamentEntries = seed.schedule.getEvents();
+    const nextIndex = getNextTournamentIndex(selectedTournamentIndex, tournamentEntries.length);
+    selectedTournamentIndex = nextIndex;
+    selectedDraftTournamentId = tournamentEntries[nextIndex]?.result.id ?? null;
+    clearSelectedTournamentReviewState(true);
+    syncScorekeeperGroupLineupsForSelectedTournament();
+    renderApp();
+    return;
+  }
+
   const playoffDistanceInput = event.target instanceof HTMLInputElement && event.target.matches('[data-playoff-distance-team]') ? event.target : null;
   if (playoffDistanceInput) {
     const teamName = playoffDistanceInput.getAttribute('data-playoff-distance-team');
@@ -4283,9 +4412,10 @@ app.addEventListener('submit', (event) => {
     const purseInput = form.querySelector('input[name="purseAmount"]') as HTMLInputElement | null;
     const titleSponsorNameInput = form.querySelector('input[name="titleSponsorName"]') as HTMLInputElement | null;
     const seasonFormatInput = form.querySelector('select[name="seasonFormat"]') as HTMLSelectElement | null;
+    const courseLayoutInput = form.querySelector('select[name="courseLayout"]') as HTMLSelectElement | null;
     const courseHoleCountInput = form.querySelector('input[name="courseHoleCount"]') as HTMLInputElement | null;
     const currentUser = getCurrentUser();
-    if (!seasonName || !purseInput || !titleSponsorNameInput || !seasonFormatInput || !courseHoleCountInput || !SeasonService.canCreateSeason(currentUser)) {
+    if (!seasonName || !purseInput || !titleSponsorNameInput || !seasonFormatInput || !courseLayoutInput || !courseHoleCountInput || !SeasonService.canCreateSeason(currentUser)) {
       return;
     }
 
@@ -4309,7 +4439,14 @@ app.addEventListener('submit', (event) => {
     const seasonId = `season-${Date.now()}`;
     const purseAmount = Number.isFinite(purseValue) && purseValue > 0 ? purseValue : 4_000_000;
     const format = seasonFormatInput.value === 'multi-round' ? 'multi-round' : 'fli';
-    const courseHoleCount = Number(courseHoleCountInput.value);
+    const layout = courseLayoutInput.value === 'red' ? 'red' : 'blue';
+    const courseHoleCount = format === 'multi-round' ? Number(courseHoleCountInput.value) || 18 : 18;
+
+    if (format === 'fli' && courseHoleCount !== 18) {
+      seasonFormMessage = 'FLI Golf keeps each played round at 18 holes by replaying the 9-hole loop after the intermission.';
+      renderApp();
+      return;
+    }
 
     let nextSeed;
     try {
@@ -4318,6 +4455,7 @@ app.addEventListener('submit', (event) => {
       }, {
         format,
         courseHoleCount,
+        courseLayout: layout,
       });
     } catch (error) {
       seasonFormMessage = error instanceof Error ? error.message : 'Unable to create the season.';

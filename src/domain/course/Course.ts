@@ -4,12 +4,14 @@ import { CourseStyle, FliStyle } from './CourseStyle';
 export class Course {
   readonly id: string;
   readonly name: string;
+  readonly basketSetup: 'blue' | 'red';
   readonly intermissionAfterHoleNumber = 9;
   private readonly holes: Hole[] = [];
 
-  constructor(id: string, name: string) {
+  constructor(id: string, name: string, basketSetup: 'blue' | 'red' = 'blue') {
     this.id = id;
     this.name = name;
+    this.basketSetup = basketSetup;
   }
 
   addHole(hole: Hole): void {

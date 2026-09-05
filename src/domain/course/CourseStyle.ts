@@ -24,15 +24,18 @@ export class MultiRoundStyle implements CourseStyle {
   readonly roundCount: number;
 
   constructor(roundCount: number) {
-    if (!Number.isInteger(roundCount) || roundCount < 2) {
-      throw new Error('A MultiRoundStyle requires at least 2 rounds.');
+    if (!Number.isInteger(roundCount) || roundCount < 1 || roundCount > 5) {
+      throw new Error('A MultiRoundStyle requires between 1 and 5 rounds.');
     }
 
     this.roundCount = roundCount;
   }
 
   buildRounds(holes: readonly Hole[]): Hole[][] {
-    const round = new FliStyle().buildRounds(holes)[0];
-    return Array.from({ length: this.roundCount }, () => [...round]);
+    if (holes.length < 9) {
+      throw new Error('A MultiRoundStyle round requires at least 9 holes.');
+    }
+
+    return Array.from({ length: this.roundCount }, () => [...holes]);
   }
 }

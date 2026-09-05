@@ -159,6 +159,73 @@ describe('Season service facade', () => {
     expect(seed.course.getHoleByNumber(24).name).toBe('Pine Point 24');
   });
 
+  it('persists the chosen blue or red basket setup in the season seed', () => {
+    const blueSeed = SeasonService.createNamedSeason('fli-blue-layout', 'Blue FLI', 4_000_000, undefined, {
+      format: 'fli',
+      courseLayout: 'blue',
+    });
+    const redSeed = SeasonService.createNamedSeason('fli-red-layout', 'Red FLI', 4_000_000, undefined, {
+      format: 'fli',
+      courseLayout: 'red',
+    });
+
+    expect(blueSeed.courseLayout).toBe('blue');
+    expect(redSeed.courseLayout).toBe('red');
+    expect(blueSeed.course.basketSetup ?? 'blue').toBe('blue');
+    expect(redSeed.course.basketSetup ?? 'red').toBe('red');
+  });
+
+  it('accepts the stored 18-hole FLI round value while preserving the 9-hole loop replay model', () => {
+    const seed = SeasonService.createNamedSeason('fli-legacy-round-count', 'Legacy FLI', 4_000_000, undefined, {
+      format: 'fli',
+      courseHoleCount: 18,
+      courseLayout: 'blue',
+    });
+
+    expect(seed.format).toBe('fli');
+    expect(seed.scoringHoleCount).toBe(18);
+    expect(seed.course.getHoles()).toHaveLength(9);
+  });
+
+  it('labels the upcoming season distinctly and seeds ten fantasy leagues with unique participants for rapid testing', () => {
+    const seed = SeasonService.createNamedSeason('summer-2-season', 'Summer 2 Season', 4_000_000, undefined, {
+      format: 'fli',
+      fantasyLeagueCount: 10,
+    });
+
+    const participantIds = seed.fantasyLeagues.flatMap((league) => league.getParticipants());
+
+    expect(seed.season.league.name).toBe('Summer 2 Season');
+    expect(seed.fantasyLeagues).toHaveLength(10);
+    expect(participantIds).toHaveLength(60);
+    expect(new Set(participantIds).size).toBe(participantIds.length);
+  });
+
+  it('creates a seeded 10-league standings progression so the dashboard can show full league movement', () => {
+    const seed = SeasonService.createNamedSeason('summer-2-season-progression', 'Summer 2 Season', 4_000_000, undefined, {
+      format: 'fli',
+      fantasyLeagueCount: 10,
+    });
+
+    expect(seed.progressedStandings).toHaveLength(10);
+    expect(seed.progressedStandings.every((league) => league.standings.length === 6)).toBe(true);
+    expect(seed.progressedStandings.every((league) => league.standings.every((entry, index, all) => index === 0 || entry.total >= all[index - 1].total))).toBe(true);
+    expect(seed.progressedStandings.every((league) => new Set(league.standings.map((entry) => entry.participantId)).size === 6)).toBe(true);
+  });
+
+  it('treats the season as complete only after every tournament scorecard has been confirmed', () => {
+    const confirmedEventScores = {
+      't-1': { playerA: -2 },
+      't-2': { playerA: -1 },
+      't-3': { playerA: -3 },
+      't-4': { playerA: -4 },
+      't-5': { playerA: -5 },
+    };
+
+    expect(SeasonService.areAllEventsConfirmed(confirmedEventScores, ['t-1', 't-2', 't-3', 't-4', 't-5'])).toBe(true);
+    expect(SeasonService.areAllEventsConfirmed({ ...confirmedEventScores, 't-5': undefined }, ['t-1', 't-2', 't-3', 't-4', 't-5'])).toBe(false);
+  });
+
   it('lets a league admin set a custom title sponsor as long as it outspends the other season sponsors', () => {
     const seed = SeasonService.createNamedSeason('upcoming-season-1', 'Winter Circuit', 4_000_000, {
       name: 'Northwind Outfitters',
