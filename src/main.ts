@@ -658,13 +658,23 @@ const saveContentPipeline = (): boolean => {
   }
 };
 
+const DEFAULT_DEMO_USER_ID = 'fantasy-owner';
+
 const getCurrentUser = (): UserProfile => {
-  const storedId = window.localStorage.getItem(USER_STORAGE_KEY) ?? proProfiles[0].id;
-  return userDirectory.find((user) => user.id === storedId) ?? proProfiles[0];
+  const storedId = window.localStorage.getItem(USER_STORAGE_KEY) ?? DEFAULT_DEMO_USER_ID;
+  return userDirectory.find((user) => user.id === storedId) ?? userDirectory.find((user) => user.id === DEFAULT_DEMO_USER_ID) ?? proProfiles[0];
 };
 
 const setCurrentUser = (userId: string): void => {
   window.localStorage.setItem(USER_STORAGE_KEY, userId);
+  const user = userDirectory.find((entry) => entry.id === userId);
+  if (user?.hasRole('fantasyLeagueOwner')) {
+    selectedDashboardFilter = 'Fantasy league';
+  } else if (user?.hasRole('leagueAdmin')) {
+    selectedDashboardFilter = 'Manage league';
+  } else if (user?.hasRole('scorekeeper')) {
+    selectedDashboardFilter = 'Scorekeeper assignment';
+  }
 };
 
 const submitFanPost = (authorId: string, body: string, media?: ContentMedia): boolean => {
@@ -831,24 +841,24 @@ const mockCurrentUser = (userId: string): void => {
   renderApp();
 };
 
+const roleLabels: Record<string, string> = {
+  siteAdmin: 'Super admin',
+  pro: 'Pro',
+  leagueAdmin: 'Admin',
+  scorekeeper: 'Scorekeeper',
+  fantasyLeagueOwner: 'Fantasy owner',
+  fantasyParticipant: 'Fantasy participant',
+  viewer: 'Viewer',
+};
+
+const tagLabels: Record<string, string> = {
+  ticketBuyer: 'Ticket buyer',
+  merchandiseBuyer: 'Merch buyer',
+  seasonPassHolder: 'Season pass',
+  sponsor: 'Sponsor',
+};
+
 const renderRoleBadges = (user: UserProfile): string => {
-  const roleLabels: Record<string, string> = {
-    siteAdmin: 'Super admin',
-    pro: 'Pro',
-    leagueAdmin: 'Admin',
-    scorekeeper: 'Scorekeeper',
-    fantasyLeagueOwner: 'Fantasy owner',
-    fantasyParticipant: 'Fantasy participant',
-    viewer: 'Viewer',
-  };
-
-  const tagLabels: Record<string, string> = {
-    ticketBuyer: 'Ticket buyer',
-    merchandiseBuyer: 'Merch buyer',
-    seasonPassHolder: 'Season pass',
-    sponsor: 'Sponsor',
-  };
-
   return `
     <div class="role-badges">
       ${user
@@ -864,6 +874,11 @@ const renderRoleBadges = (user: UserProfile): string => {
     </div>
   `;
 };
+
+const getRoleLabelForDisplay = (roles: string[]): string =>
+  roles
+    .map((role) => roleLabels[role] ?? role)
+    .join(', ');
 
 const getAssignedGroupForUser = (user: UserProfile): string | null => {
   const match = Object.entries(scorekeeperAssignments).find(([, person]) => person === user.displayName);
@@ -946,7 +961,7 @@ const renderLoginPane = (): string => {
               .map(
                 (user) => `
                   <option value="${user.id}" ${user.id === currentUser.id ? 'selected' : ''}>
-                    ${user.displayName} — ${user.hasRole('pro') ? 'Pro' : user.getRoles().join(', ')}
+                    ${user.displayName} — ${getRoleLabelForDisplay(user.getRoles()) || 'Viewer'}
                   </option>
                 `,
               )
