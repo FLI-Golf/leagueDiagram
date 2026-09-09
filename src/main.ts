@@ -17,7 +17,7 @@ import type { ContentMedia, ContentStatus, ContentSubmission } from './domain/pi
 import { UserProfile } from './domain/user/UserProfile';
 
 const createStarterSeed = () => SeasonService.createNamedSeason('league-demo', 'Summer Season', 4_000_000, undefined, { fantasyLeagueCount: 10 });
-const createStarterUpcomingSeed = () => SeasonService.createNamedSeason('league-demo-upcoming', 'Summer 2 Season', 8_000_000, undefined, { fantasyLeagueCount: 10 });
+const createStarterUpcomingSeed = () => SeasonService.createNamedSeason('league-demo-upcoming', 'Summer 2 Season', 4_000_000, undefined, { fantasyLeagueCount: 10 });
 const createEmptySeasonSeed = () => SeasonService.createNamedSeason('league-empty', '', 4_000_000, undefined, { fantasyLeagueCount: 10 });
 
 let seed = createStarterSeed();
@@ -1077,25 +1077,6 @@ const renderSeasonCreator = (): string => {
             <option value="fli" ${upcomingSeed?.format !== 'multi-round' ? 'selected' : ''}>FLI Golf</option>
             <option value="multi-round" ${upcomingSeed?.format === 'multi-round' ? 'selected' : ''}>MultiRound</option>
           </select>
-        </label>
-        <label>
-          <span>Course layout</span>
-          <select name="courseLayout">
-            <option value="blue" ${(upcomingSeed?.courseLayout ?? 'blue') === 'blue' ? 'selected' : ''}>Blue basket setup</option>
-            <option value="red" ${(upcomingSeed?.courseLayout ?? 'blue') === 'red' ? 'selected' : ''}>Red basket setup</option>
-          </select>
-        </label>
-        <label>
-          <span>Course length</span>
-          <input
-            type="number"
-            name="courseHoleCount"
-            value="${upcomingSeed?.format === 'multi-round' ? upcomingSeed.scoringHoleCount : 18}"
-            min="9"
-            max="33"
-            step="1"
-          />
-          <small style="opacity: 0.8;">FLI Golf uses the Blue/Red basket setup on a 9-hole loop replayed for an 18-hole round. MultiRound keeps each round at 18 holes, with 9–33 holes available and 1–5 rounds possible.</small>
         </label>
         <button type="submit">${hasSeason() ? 'Create upcoming season' : 'Create season'}</button>
       </form>
@@ -4436,7 +4417,7 @@ app.addEventListener('submit', (event) => {
     const courseLayoutInput = form.querySelector('select[name="courseLayout"]') as HTMLSelectElement | null;
     const courseHoleCountInput = form.querySelector('input[name="courseHoleCount"]') as HTMLInputElement | null;
     const currentUser = getCurrentUser();
-    if (!seasonName || !purseInput || !titleSponsorNameInput || !seasonFormatInput || !courseLayoutInput || !courseHoleCountInput || !SeasonService.canCreateSeason(currentUser)) {
+    if (!seasonName || !purseInput || !titleSponsorNameInput || !seasonFormatInput || !SeasonService.canCreateSeason(currentUser)) {
       return;
     }
 
@@ -4460,8 +4441,8 @@ app.addEventListener('submit', (event) => {
     const seasonId = `season-${Date.now()}`;
     const purseAmount = Number.isFinite(purseValue) && purseValue > 0 ? purseValue : 4_000_000;
     const format = seasonFormatInput.value === 'multi-round' ? 'multi-round' : 'fli';
-    const layout = courseLayoutInput.value === 'red' ? 'red' : 'blue';
-    const courseHoleCount = format === 'multi-round' ? Number(courseHoleCountInput.value) || 18 : 18;
+    const layout = courseLayoutInput?.value === 'red' ? 'red' : 'blue';
+    const courseHoleCount = format === 'multi-round' ? Number(courseHoleCountInput?.value ?? 18) || 18 : 18;
 
     if (format === 'fli' && courseHoleCount !== 18) {
       seasonFormMessage = 'FLI Golf keeps each played round at 18 holes by replaying the 9-hole loop after the intermission.';
