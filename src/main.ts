@@ -2668,7 +2668,13 @@ const renderHomePage = (): string => {
     `;
   }
 
-  if (selectedFilter === 'Approve scores' || selectedFilter === 'Scorekeeper scorecard' || selectedFilter === 'Standings' || (currentUser.hasRole('scorekeeper') && !!getAssignedGroupForUser(currentUser))) {
+  if (
+    selectedFilter === 'Approve scores' ||
+    selectedFilter === 'Scorekeeper assignment' ||
+    selectedFilter === 'Scorekeeper scorecard' ||
+    selectedFilter === 'Standings' ||
+    (currentUser.hasRole('scorekeeper') && !!getAssignedGroupForUser(currentUser))
+  ) {
     return `
       <main class="page-shell">
         ${renderLoginPane()}

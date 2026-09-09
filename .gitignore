@@ -3,3 +3,6 @@ dist/
 coverage/
 .vite/
 *.log
+demo/captures/
+playwright-report/
+test-results/
