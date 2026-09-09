@@ -1,23 +1,31 @@
 import { expect, test } from '@playwright/test';
 
-const setUser = async (page: any, userId: string): Promise<void> => {
-  await page.goto('/');
-  const loginForm = page.locator('form[data-action="login"]');
-  await expect(loginForm).toBeVisible();
-  await page.locator('select[name="userId"]').selectOption(userId);
-  await page.locator('form[data-action="login"] button[type="submit"]').click();
-  await expect(page.getByText('Active account:')).toContainText(userId === 'league-admin' ? 'League Admin' : userId === 'ava-park' ? 'Ava Park' : 'Fantasy Owner');
-};
-
-test('Part 1: League + Season creation', async ({ page }) => {
-  test.setTimeout(60000);
-
+const resetDemoState = async (page: any): Promise<void> => {
   await page.goto('/');
   await page.evaluate(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
   });
-  await setUser(page, 'league-admin');
+  await page.goto('/');
+};
+
+const loginAs = async (page: any, userId: string): Promise<void> => {
+  await resetDemoState(page);
+
+  const loginForm = page.locator('form[data-action="login"]');
+  await expect(loginForm).toBeVisible();
+  await page.locator('select[name="userId"]').selectOption(userId);
+  await page.locator('form[data-action="login"] button[type="submit"]').click();
+
+  await expect(page.getByText('Active account:')).toContainText(
+    userId === 'league-admin' ? 'League Admin' : userId === 'fantasy-owner' ? 'Fantasy Owner' : 'League Admin'
+  );
+};
+
+test('Launch the league', async ({ page }) => {
+  test.setTimeout(60000);
+
+  await loginAs(page, 'league-admin');
 
   await expect(page.getByRole('heading', { name: 'Create upcoming season' })).toBeVisible();
 
@@ -25,27 +33,20 @@ test('Part 1: League + Season creation', async ({ page }) => {
   await expect(seasonNameInput).toBeVisible();
   await seasonNameInput.fill('North Ridge Summer');
 
-  const purseInput = page.getByLabel('Purse amount');
-  await purseInput.fill('4000000');
+  await page.getByLabel('Purse amount').fill('4000000');
+  await page.getByLabel('Title sponsor name').fill('Northwind Outfitters');
 
-  const titleSponsorInput = page.getByLabel('Title sponsor name');
-  await titleSponsorInput.fill('Northwind Outfitters');
+  await page.getByRole('button', { name: 'Create upcoming season' }).click();
 
-  const createSeasonButton = page.getByRole('button', { name: 'Create upcoming season' });
-  await createSeasonButton.click();
-
-  await expect(page.getByText(/Upcoming season .* is ready with Northwind Outfitters as title sponsor\./)).toBeVisible();
+  await expect(
+    page.getByText(/Upcoming season .* is ready with Northwind Outfitters as title sponsor\./)
+  ).toBeVisible();
 });
 
-test('Part 2: Scorekeeping + seed all group scores', async ({ page }) => {
+test('Run the competition', async ({ page }) => {
   test.setTimeout(60000);
 
-  await page.goto('/');
-  await page.evaluate(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  await setUser(page, 'league-admin');
+  await loginAs(page, 'league-admin');
 
   await expect(page.getByText('Active account:')).toContainText('League Admin');
 
@@ -63,15 +64,10 @@ test('Part 2: Scorekeeping + seed all group scores', async ({ page }) => {
   await expect(page.getByText('Seed all group scores')).toBeVisible();
 });
 
-test('Part 3: Fantasy Owner + seed fantasy draft', async ({ page }) => {
+test('Activate fantasy engagement', async ({ page }) => {
   test.setTimeout(60000);
 
-  await page.goto('/');
-  await page.evaluate(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  await setUser(page, 'fantasy-owner');
+  await loginAs(page, 'fantasy-owner');
 
   await expect(page.getByText('Active account:')).toContainText('Fantasy Owner');
 
