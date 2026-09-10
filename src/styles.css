@@ -234,6 +234,10 @@ form[data-action='create-season'] label span {
   gap: 8px;
 }
 
+.login-form label span {
+  color: #ffffff;
+}
+
 .login-form select,
 .post-form textarea,
 .login-form button,
