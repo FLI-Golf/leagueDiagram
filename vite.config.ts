@@ -1,6 +1,3 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-
 import { defineConfig, type Plugin } from 'vitest/config';
 
 /**
@@ -39,49 +36,11 @@ const sendJson = (res: import('node:http').ServerResponse, status: number, body:
   res.end(JSON.stringify(body));
 };
 
-/**
- * Returns the live source of the 6-of-6 trigger (`join()` through
- * `buildIfReady()`) straight from the domain file, so the demo's "how it
- * works" callout always shows the real code with real line numbers.
- */
-const TRIGGER_SOURCE_FILE = 'src/domain/draft/MockDraftSeries.ts';
-const TRIGGER_MARKERS = ['this.participants.push', 'this.buildIfReady();', 'for (const tournamentId', 'new DraftRoom('];
-
-const getTriggerSource = () => {
-  const absolute = path.resolve(process.cwd(), TRIGGER_SOURCE_FILE);
-  const fileLines = fs.readFileSync(absolute, 'utf8').split('\n');
-  const startIndex = fileLines.findIndex((line) => line.includes('join(participantId'));
-  const endIndex = fileLines.findIndex((line) => line.includes('isFull(): boolean'));
-  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
-    return null;
-  }
-
-  return {
-    file: TRIGGER_SOURCE_FILE,
-    startLine: startIndex + 1,
-    lines: fileLines.slice(startIndex, endIndex).map((text, offset) => ({
-      no: startIndex + offset + 1,
-      text: text.replace(/\s+$/, ''),
-      trigger: TRIGGER_MARKERS.some((marker) => text.includes(marker)),
-    })),
-  };
-};
-
 const demoFantasyLeagueApi = (): Plugin => ({
   name: 'demo-fantasy-league-api',
   configureServer(server) {
     server.middlewares.use('/api/demo/fantasy-league', (req, res) => {
       if (req.method === 'GET') {
-        const getPath = req.url ?? '';
-        if (getPath.endsWith('/trigger-source')) {
-          const source = getTriggerSource();
-          if (!source) {
-            sendJson(res, 500, { error: 'Trigger source unavailable' });
-            return;
-          }
-          sendJson(res, 200, source);
-          return;
-        }
         sendJson(res, 200, lobby);
         return;
       }

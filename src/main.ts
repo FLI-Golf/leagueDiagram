@@ -304,29 +304,6 @@ type FantasyLeagueLobby = {
 let fantasyLeagueLobby: FantasyLeagueLobby | null = null;
 let fantasyLeagueLobbyLoaded = false;
 
-type TriggerSourceLine = { no: number; text: string; trigger: boolean };
-type TriggerSource = { file: string; startLine: number; lines: TriggerSourceLine[] };
-
-let fantasyTriggerSource: TriggerSource | null = null;
-
-const normalizeTriggerSource = (value: unknown): TriggerSource | null => {
-  const record = value as Partial<TriggerSource> | null;
-  if (!record || typeof record.file !== 'string' || typeof record.startLine !== 'number' || !Array.isArray(record.lines)) {
-    return null;
-  }
-
-  return {
-    file: record.file,
-    startLine: record.startLine,
-    lines: record.lines
-      .filter((line): line is TriggerSourceLine => {
-        const entry = line as Partial<TriggerSourceLine>;
-        return typeof entry.no === 'number' && typeof entry.text === 'string' && typeof entry.trigger === 'boolean';
-      })
-      .map((line) => ({ no: line.no, text: line.text, trigger: line.trigger })),
-  };
-};
-
 const normalizeFantasyLeagueLobby = (value: unknown): FantasyLeagueLobby | null => {
   const record = value as Partial<FantasyLeagueLobby> | null;
   if (!record || typeof record.leagueId !== 'string' || typeof record.ownerId !== 'string' || !Array.isArray(record.participantIds)) {
@@ -343,15 +320,10 @@ const normalizeFantasyLeagueLobby = (value: unknown): FantasyLeagueLobby | null 
 // The Vite dev server holds the shared lobby so separate browsers join the same league (see demo/fill-the-league.md).
 const refreshFantasyLeagueLobby = async (): Promise<void> => {
   try {
-    const [lobbyResponse, triggerResponse] = await Promise.all([
-      fetch('/api/demo/fantasy-league', { cache: 'no-store' }),
-      fetch('/api/demo/fantasy-league/trigger-source', { cache: 'no-store' }),
-    ]);
-    fantasyLeagueLobby = lobbyResponse.ok ? normalizeFantasyLeagueLobby(await lobbyResponse.json()) : null;
-    fantasyTriggerSource = triggerResponse.ok ? normalizeTriggerSource(await triggerResponse.json()) : null;
+    const response = await fetch('/api/demo/fantasy-league', { cache: 'no-store' });
+    fantasyLeagueLobby = response.ok ? normalizeFantasyLeagueLobby(await response.json()) : null;
   } catch {
     fantasyLeagueLobby = null;
-    fantasyTriggerSource = null;
   }
   fantasyLeagueLobbyLoaded = true;
   renderApp();
@@ -1943,32 +1915,6 @@ const draftIcons: Record<string, string> = {
 
 const FANTASY_LEAGUE_CAPACITY = 6;
 
-// Shows the team the exact trigger code (live source served by the dev middleware) that fires when the league fills.
-const renderTriggerCodeCallout = (): string => {
-  if (!fantasyTriggerSource) {
-    return '';
-  }
-
-  const codeLines = fantasyTriggerSource.lines
-    .map(
-      (line) => `
-        <span class="code-line ${line.trigger ? 'code-line--trigger' : ''}" data-code-line="${line.no}"><span class="code-arrow">${line.trigger ? '➜' : ''}</span><span class="code-lineno">${line.no}</span><code>${escapeHtml(line.text)}</code></span>`,
-    )
-    .join('');
-
-  return `
-    <div class="code-callout" data-trigger-panel>
-      <p class="role-access-note">
-        <strong>How the 6-of-6 trigger fires:</strong> when the sixth participant joins,
-        <code>MockDraftSeries.join()</code> calls <code>buildIfReady()</code>, which builds one
-        <code>DraftRoom</code> per remaining tournament — every draft room exists the moment the league fills.
-      </p>
-      <pre class="code-callout-pre"><code>${codeLines}</code></pre>
-      <p class="code-source-note">${escapeHtml(fantasyTriggerSource.file)}:${fantasyTriggerSource.startLine} · live source read by the dev server</p>
-    </div>
-  `;
-};
-
 const renderFantasyLeagueLobbyPanel = (): string => {
   const currentUser = getCurrentUser();
 
@@ -2029,7 +1975,6 @@ const renderFantasyLeagueLobbyPanel = (): string => {
       ${isFull
         ? `<p class="role-access-note" data-lobby-ready><strong>League full — ${count} of ${FANTASY_LEAGUE_CAPACITY} participants.</strong> The fantasy draft can now be seeded from Draft controls.</p>`
         : `<p class="role-access-note" data-lobby-waiting>Waiting for ${remaining} more participant${remaining === 1 ? '' : 's'} to join…</p>`}
-      ${isFull ? renderTriggerCodeCallout() : ''}
       ${!alreadyJoined && !isFull
         ? `<div class="action-row" style="margin-top: 12px;">
             <button type="button" class="primary-button" data-join-fantasy-league="true">Join league as ${escapeHtml(currentUser.displayName)}</button>

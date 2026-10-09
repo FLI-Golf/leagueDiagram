@@ -11,8 +11,10 @@
 ## Fill the league — walkthrough complete
 
 **Video:** `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`
-(51 s, 1280×720 H.264 with ElevenLabs voice narration; git-ignored, one page at
-a time — owner start, five joins, final verification). Repeatable command:
+(~38 s, 1280×720 H.264 with ElevenLabs voice narration and short caption bars;
+git-ignored, application UI only — owner start, first two joins, the final
+join, and the full six-member list). Participants three and four join through
+the same UI off-camera to keep the video short. Repeatable command:
 
 ```bash
 npm install && npx playwright install chromium --with-deps
@@ -37,14 +39,10 @@ node scripts/generate-fill-the-league-narration.js   # narration (needs ELEVENLA
 | Fantasy Owner | Reloaded, re-opened Fantasy league | Still "6 of 6", six members, one Owner row |
 | Fantasy Owner | Seed fantasy draft | App confirms readiness: "Sunset Open draft" lobby + enabled Start draft |
 
-**How the 6-of-6 trigger is built:** when the lobby hits 6 of 6, the panel
-shows the live source of the trigger from `src/domain/draft/MockDraftSeries.ts`
-(read from disk by the dev server, real line numbers) with arrow markers on the
-trigger lines: `join()` → `buildIfReady()` → one `DraftRoom` per remaining
-tournament, all built the moment the league fills. Snapshots for the team:
-`demo/captures/fill-the-league/code-trigger-panel.png` and `league-lobby-full.png`
-(Playwright screenshots render the CSS-annotated panel; Playwright itself does
-not auto-annotate code).
+**For the team (docs only, not in the video):** the fill trigger is
+`MockDraftSeries.join()` → `buildIfReady()` — when the sixth participant joins,
+one `DraftRoom` per remaining tournament is built immediately
+(`src/domain/draft/MockDraftSeries.ts`). See `demo/fill-the-league.md`.
 
 **Seeded (not part of joins):** synthetic mock accounts already ship in
 `userDirectory`; the setup step calls `POST /api/demo/fantasy-league/reset` so

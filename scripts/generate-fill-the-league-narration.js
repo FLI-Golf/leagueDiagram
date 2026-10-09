@@ -25,18 +25,11 @@ const SEGMENTS = [
   { video: '01-owner-league-of-one.webm', audio: '01-owner.mp3', text: 'The league starts with just its owner — one of six.' },
   { video: '02-join-owen-bell.webm', audio: '02-owen.mp3', text: 'Owen Bell signs in and joins the league. Two of six.' },
   { video: '03-join-nina-alvarez.webm', audio: '03-nina.mp3', text: 'Nina Alvarez joins. Three of six participants.' },
-  { video: '04-join-harper-quinn.webm', audio: '04-harper.mp3', text: 'Harper Quinn joins. Four of six.' },
-  { video: '05-join-marcus-webb.webm', audio: '05-marcus.mp3', text: 'Marcus Webb joins. Five of six.' },
-  { video: '06-join-taylor-reed.webm', audio: '06-taylor.mp3', text: 'Taylor Reed joins and fills the league. Six of six.' },
+  { video: '04-join-taylor-reed-league-full.webm', audio: '04-taylor.mp3', text: 'Taylor Reed joins last and fills the league. Six of six.' },
   {
-    video: '07-owner-verifies-full-league.webm',
-    audio: '07-verify.mp3',
-    text: 'After reloading, all six memberships remain. The owner seeds the draft, and the Sunset Open draft is ready to start.',
-  },
-  {
-    video: '08-how-the-trigger-fires.webm',
-    audio: '08-trigger.mp3',
-    text: 'At six of six, buildIfReady builds a draft room for every remaining tournament at once.',
+    video: '05-owner-final-six-members.webm',
+    audio: '05-verify.mp3',
+    text: 'After reloading, all six members remain. The owner seeds the draft — the Sunset Open draft is ready to start.',
   },
 ];
 

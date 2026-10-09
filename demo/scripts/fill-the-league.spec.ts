@@ -4,6 +4,7 @@ import * as path from 'node:path';
 
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { demoWait, moveAndClick, moveMouseBelowElement, moveMouseToElement } from '../helpers/demoCursor';
+import { showDemoCaption } from '../helpers/demoCaptions';
 
 /**
  * "Fill the league" walkthrough: the fantasy league starts with only its owner,
@@ -12,11 +13,12 @@ import { demoWait, moveAndClick, moveMouseBelowElement, moveMouseToElement } fro
  * sign-in). Every join happens through the UI; only the owner-only starting
  * league is seeded (via the dev-server lobby reset). See demo/fill-the-league.md.
  *
- * Each context records its own segment so the video focuses on one page at a
- * time; the segments are stitched in join order into a single MP4 when FFmpeg
- * is available. The final segment also captures annotated PNG snapshots of the
- * 6-of-6 code trigger panel for the team (Playwright screenshots render whatever
- * the page renders, so arrows/highlights are real CSS over the live source).
+ * The video shows only the application UI: the owner, the first two joins, the
+ * final join that fills the league, and the full six-member list. The middle
+ * joins (participants three and four) still happen through the UI in their own
+ * contexts, just off-camera, to keep the video short. Each recorded context
+ * captures its own segment; segments are stitched in order into one MP4 when
+ * FFmpeg is available.
  */
 
 const BASE_URL = process.env.DEMO_BASE_URL ?? 'http://localhost:5173';
@@ -32,6 +34,10 @@ const PARTICIPANTS = [
   { id: 'marcus-webb', name: 'Marcus Webb' },
   { id: 'taylor-reed', name: 'Taylor Reed' },
 ];
+// Recorded on camera: the first two joins and the last one. The rest join
+// through the same UI off-camera so the video stays short.
+const RECORDED_JOINS = [PARTICIPANTS[0], PARTICIPANTS[1], PARTICIPANTS[4]];
+const OFF_CAMERA_JOINS = [PARTICIPANTS[2], PARTICIPANTS[3]];
 
 const QUICK_MOVE = { durationMs: 450, steps: 18 };
 
@@ -70,6 +76,20 @@ const saveSegment = async (page: Page, context: Awaited<ReturnType<Browser['newC
   const targetPath = path.join(CAPTURE_DIR, fileName);
   fs.renameSync(recordedPath, targetPath);
   return targetPath;
+};
+
+/** A join through the same UI, in its own authenticated context, just not recorded. */
+const joinOffCamera = async (browser: Browser, participant: { id: string; name: string }, expectedCount: string): Promise<void> => {
+  const context = await browser.newContext({ baseURL: BASE_URL });
+  const page = await context.newPage();
+  await page.goto('/');
+  await page.getByLabel('Signed in as').selectOption(participant.id);
+  await page.getByRole('button', { name: 'Switch account' }).click();
+  await expect(page.getByText('Active account:')).toContainText(participant.name);
+  await page.locator('[data-join-fantasy-league]').click();
+  await expect(page.locator('[data-lobby-count]')).toHaveText(expectedCount);
+  await expect(page.locator(`[data-lobby-member="${participant.id}"]`)).toContainText(participant.name);
+  await context.close();
 };
 
 const stitchSegments = (segments: string[]): string | null => {
@@ -148,11 +168,12 @@ test('Fill the league: owner plus five participants join through the UI', async 
   expect(seededLobby.ownerId).toBe(OWNER.id);
   expect(seededLobby.participantIds).toEqual([OWNER.id]);
 
-  // --- Segment 1: owner opens the league, which contains only them. ---
+  // --- Segment 1: the owner opens a league that contains only them. ---
   {
     const { context, page } = await newRecordedPage(browser);
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Mock current user' })).toBeVisible();
+    await showDemoCaption(page, 'Fantasy Owner opens the league — only the owner so far (1 of 6)');
     await moveMouseBelowElement(page, page.getByRole('heading', { name: 'Mock current user' }), 40, QUICK_MOVE);
     await demoWait(400);
 
@@ -167,18 +188,19 @@ test('Fill the league: owner plus five participants join through the UI', async 
     // The owner is already a member, so no join action is offered (owner counted once).
     await expect(page.locator('[data-join-fantasy-league]')).toHaveCount(0);
     await moveMouseToElement(page, countBadge, QUICK_MOVE);
-    await demoWait(1600);
+    await demoWait(1500);
 
     segments.push(await saveSegment(page, context, '01-owner-league-of-one.webm'));
   }
 
-  // --- Segments 2-6: each participant joins from a separate authenticated context. ---
-  for (const [index, participant] of PARTICIPANTS.entries()) {
+  // --- Segments 2-3: the first two participants join on camera. ---
+  for (const [index, participant] of [PARTICIPANTS[0], PARTICIPANTS[1]].entries()) {
     const expectedBefore = `${index + 1} of 6`;
     const expectedAfter = `${index + 2} of 6`;
 
     const { context, page } = await newRecordedPage(browser);
     await page.goto('/');
+    await showDemoCaption(page, `${participant.name} signs in and joins — ${expectedAfter}`);
     await signInAs(page, participant.id, participant.name);
 
     const countBadge = page.locator('[data-lobby-count]');
@@ -200,10 +222,42 @@ test('Fill the league: owner plus five participants join through the UI', async 
     segments.push(await saveSegment(page, context, `0${index + 2}-join-${participant.id}.webm`));
   }
 
-  // --- Segment 7: owner reloads, verifies the full league, and seeds the draft. ---
+  // --- Off-camera: participants three and four join through the same UI. ---
+  for (const [index, participant] of OFF_CAMERA_JOINS.entries()) {
+    await joinOffCamera(browser, participant, `${index + 4} of 6`);
+  }
+
+  // --- Segment 4: the fifth participant joins and fills the league. ---
+  {
+    const participant = RECORDED_JOINS[2];
+    const { context, page } = await newRecordedPage(browser);
+    await page.goto('/');
+    await showDemoCaption(page, `${participant.name} joins last — the league is full (6 of 6)`);
+    await signInAs(page, participant.id, participant.name);
+
+    const countBadge = page.locator('[data-lobby-count]');
+    await moveMouseToElement(page, countBadge, QUICK_MOVE);
+    await expect(countBadge).toHaveText('5 of 6');
+    await demoWait(300);
+
+    const joinButton = page.locator('[data-join-fantasy-league]');
+    await expect(joinButton).toHaveText(`Join league as ${participant.name}`);
+    await moveAndClick(page, joinButton, { ...QUICK_MOVE, pauseBeforeClickMs: 350 });
+
+    await expect(countBadge).toHaveText('6 of 6');
+    await expect(page.locator('[data-lobby-ready]')).toContainText('League full — 6 of 6 participants.');
+    await expect(page.locator(`[data-lobby-member="${participant.id}"]`)).toContainText(participant.name);
+    await moveMouseToElement(page, countBadge, QUICK_MOVE);
+    await demoWait(900);
+
+    segments.push(await saveSegment(page, context, `04-join-${participant.id}-league-full.webm`));
+  }
+
+  // --- Segment 5: the owner reloads and shows the full six-member league. ---
   {
     const { context, page } = await newRecordedPage(browser);
     await page.goto('/');
+    await showDemoCaption(page, 'Owner reloads — all six members remain, and the draft can be seeded');
 
     const fantasyLeagueLink = page.getByRole('link', { name: 'Fantasy league' });
     await moveAndClick(page, fantasyLeagueLink, { ...QUICK_MOVE, pauseBeforeClickMs: 300 });
@@ -212,9 +266,8 @@ test('Fill the league: owner plus five participants join through the UI', async 
     await expect(countBadge).toHaveText('6 of 6');
     await expect(page.locator('[data-lobby-member]')).toHaveCount(6);
     await expect(page.locator('[data-lobby-member]', { hasText: 'Owner' })).toHaveCount(1);
-    await expect(page.locator('[data-lobby-ready]')).toContainText('League full — 6 of 6 participants.');
     await moveMouseToElement(page, countBadge, QUICK_MOVE);
-    await demoWait(700);
+    await demoWait(600);
 
     // Memberships must survive a reload (the mock user persists via localStorage).
     await page.reload();
@@ -235,31 +288,9 @@ test('Fill the league: owner plus five participants join through the UI', async 
     const startDraftButton = page.getByRole('button', { name: 'Start draft' });
     await expect(startDraftButton).toBeVisible();
     await moveMouseToElement(page, startDraftButton, QUICK_MOVE);
-    await demoWait(1800);
+    await demoWait(1500);
 
-    segments.push(await saveSegment(page, context, '07-owner-verifies-full-league.webm'));
-  }
-
-  // --- Segment 8: show the team the code trigger that fires at 6 of 6. ---
-  {
-    const { context, page } = await newRecordedPage(browser);
-    await page.goto('/');
-
-    const triggerPanel = page.locator('[data-trigger-panel]');
-    await expect(triggerPanel).toBeVisible();
-    const triggerLines = page.locator('.code-line--trigger');
-    await expect(triggerLines).toHaveCount(4);
-
-    await moveMouseToElement(page, triggerPanel, QUICK_MOVE);
-    await demoWait(1800);
-    // Annotated code snapshot for the team: real source lines with arrow markers.
-    await triggerPanel.screenshot({ path: path.join(CAPTURE_DIR, 'code-trigger-panel.png') });
-    await moveMouseToElement(page, triggerLines.first(), QUICK_MOVE);
-    await demoWait(1000);
-    await page.locator('[data-fantasy-league-lobby]').screenshot({ path: path.join(CAPTURE_DIR, 'league-lobby-full.png') });
-    await demoWait(800);
-
-    segments.push(await saveSegment(page, context, '08-how-the-trigger-fires.webm'));
+    segments.push(await saveSegment(page, context, '05-owner-final-six-members.webm'));
   }
 
   // --- Programmatic verification against the league record. ---

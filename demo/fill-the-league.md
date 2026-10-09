@@ -53,16 +53,18 @@ That is impossible with the app as-is:
   Fantasy league / home dashboard. A "Join league" action was added to a new
   **Fantasy league lobby** panel so each signed-in mock user joins through the
   UI. No domain behavior was changed.
-- **Showing the 6-of-6 trigger:** when the lobby reaches `6 of 6`, the panel
-  renders a "How the 6-of-6 trigger fires" code callout. The dev middleware
-  (`GET /api/demo/fantasy-league/trigger-source`) reads
-  `src/domain/draft/MockDraftSeries.ts` from disk, so the callout shows the
-  **live source** (`join()` → `buildIfReady()` → one `DraftRoom` per remaining
-  tournament) with real line numbers; the trigger lines carry orange arrow
-  markers. Playwright doesn't annotate code by itself — arrows/highlights are
-  CSS in the page, and the walkthrough records the panel and snapshots it to
-  `demo/captures/fill-the-league/code-trigger-panel.png` and
-  `league-lobby-full.png` for the team.
+
+## How the 6-of-6 trigger works (code reference for the team)
+
+The walkthrough video intentionally shows only the application UI — no code or
+terminal displays. For the team, the fill trigger lives in
+`src/domain/draft/MockDraftSeries.ts`: `join()` rejects duplicates and a
+seventh participant, then calls `buildIfReady()` (line ~70-97); the moment the
+sixth participant joins, `buildIfReady()` builds one `DraftRoom` per remaining
+tournament, so every draft room exists as soon as the league fills. In the UI
+the league lobby reaches "League full — 6 of 6 participants", and the app's
+existing confirmation is seeding the draft into the "Sunset Open draft" lobby
+with an enabled **Start draft** button.
 
 ## Seeded setup (not part of the joins)
 
@@ -88,7 +90,16 @@ The spec records one video per browser context and saves them under
 in join order into `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`.
 The narration script generates one ElevenLabs clip per segment, muxes each clip
 with its segment, and re-stitches the final narrated MP4 at the same path.
-`demo/captures/` is git-ignored; no authentication state is written to disk.
+Short caption bars are injected as a DOM overlay (`demo/helpers/demoCaptions.ts`)
+so explanations appear in the recording without post-production.
+
+Video cut (application UI only, ~38 s): owner with a league of one → first two
+joins on camera (Owen Bell, Nina Alvarez) → the final join on camera
+(Taylor Reed, 6 of 6) → the owner reloading to show the full six-member list
+and the seeded draft lobby. Participants three and four (Harper Quinn, Marcus
+Webb) still join through the same UI in their own contexts, just off-camera, to
+keep the video short. `demo/captures/` is git-ignored; no authentication state
+is written to disk.
 
 ## Verification results
 
@@ -108,11 +119,10 @@ Recorded run on the `feat/fill-the-league-walkthrough` branch (Playwright
   shows "League full — 6 of 6 participants", and clicking the existing
   **Seed fantasy draft** action built the real "Sunset Open draft" lobby with
   an enabled **Start draft** button. Nothing beyond that is claimed.
-- **Video** — 8 narrated segments (one page at a time) stitched to
-  `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`, 57.3 s,
+- **Video** — 5 narrated, captioned segments (application UI only) stitched to
+  `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`, 37.5 s,
   1280×720 H.264 + AAC narration (ElevenLabs, one clip per segment).
-  Playwright: 1 passed. Annotated code snapshots: `code-trigger-panel.png`,
-  `league-lobby-full.png`.
+  Playwright: 1 passed.
 
 ## Known gaps
 
