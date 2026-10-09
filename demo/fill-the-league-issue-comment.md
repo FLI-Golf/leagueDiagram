@@ -37,6 +37,15 @@ node scripts/generate-fill-the-league-narration.js   # narration (needs ELEVENLA
 | Fantasy Owner | Reloaded, re-opened Fantasy league | Still "6 of 6", six members, one Owner row |
 | Fantasy Owner | Seed fantasy draft | App confirms readiness: "Sunset Open draft" lobby + enabled Start draft |
 
+**How the 6-of-6 trigger is built:** when the lobby hits 6 of 6, the panel
+shows the live source of the trigger from `src/domain/draft/MockDraftSeries.ts`
+(read from disk by the dev server, real line numbers) with arrow markers on the
+trigger lines: `join()` → `buildIfReady()` → one `DraftRoom` per remaining
+tournament, all built the moment the league fills. Snapshots for the team:
+`demo/captures/fill-the-league/code-trigger-panel.png` and `league-lobby-full.png`
+(Playwright screenshots render the CSS-annotated panel; Playwright itself does
+not auto-annotate code).
+
 **Seeded (not part of joins):** synthetic mock accounts already ship in
 `userDirectory`; the setup step calls `POST /api/demo/fantasy-league/reset` so
 the league starts owner-only. Every join went through the UI from a separate

@@ -14,7 +14,9 @@ import { demoWait, moveAndClick, moveMouseBelowElement, moveMouseToElement } fro
  *
  * Each context records its own segment so the video focuses on one page at a
  * time; the segments are stitched in join order into a single MP4 when FFmpeg
- * is available.
+ * is available. The final segment also captures annotated PNG snapshots of the
+ * 6-of-6 code trigger panel for the team (Playwright screenshots render whatever
+ * the page renders, so arrows/highlights are real CSS over the live source).
  */
 
 const BASE_URL = process.env.DEMO_BASE_URL ?? 'http://localhost:5173';
@@ -236,6 +238,28 @@ test('Fill the league: owner plus five participants join through the UI', async 
     await demoWait(1800);
 
     segments.push(await saveSegment(page, context, '07-owner-verifies-full-league.webm'));
+  }
+
+  // --- Segment 8: show the team the code trigger that fires at 6 of 6. ---
+  {
+    const { context, page } = await newRecordedPage(browser);
+    await page.goto('/');
+
+    const triggerPanel = page.locator('[data-trigger-panel]');
+    await expect(triggerPanel).toBeVisible();
+    const triggerLines = page.locator('.code-line--trigger');
+    await expect(triggerLines).toHaveCount(4);
+
+    await moveMouseToElement(page, triggerPanel, QUICK_MOVE);
+    await demoWait(1800);
+    // Annotated code snapshot for the team: real source lines with arrow markers.
+    await triggerPanel.screenshot({ path: path.join(CAPTURE_DIR, 'code-trigger-panel.png') });
+    await moveMouseToElement(page, triggerLines.first(), QUICK_MOVE);
+    await demoWait(1000);
+    await page.locator('[data-fantasy-league-lobby]').screenshot({ path: path.join(CAPTURE_DIR, 'league-lobby-full.png') });
+    await demoWait(800);
+
+    segments.push(await saveSegment(page, context, '08-how-the-trigger-fires.webm'));
   }
 
   // --- Programmatic verification against the league record. ---

@@ -53,6 +53,16 @@ That is impossible with the app as-is:
   Fantasy league / home dashboard. A "Join league" action was added to a new
   **Fantasy league lobby** panel so each signed-in mock user joins through the
   UI. No domain behavior was changed.
+- **Showing the 6-of-6 trigger:** when the lobby reaches `6 of 6`, the panel
+  renders a "How the 6-of-6 trigger fires" code callout. The dev middleware
+  (`GET /api/demo/fantasy-league/trigger-source`) reads
+  `src/domain/draft/MockDraftSeries.ts` from disk, so the callout shows the
+  **live source** (`join()` → `buildIfReady()` → one `DraftRoom` per remaining
+  tournament) with real line numbers; the trigger lines carry orange arrow
+  markers. Playwright doesn't annotate code by itself — arrows/highlights are
+  CSS in the page, and the walkthrough records the panel and snapshots it to
+  `demo/captures/fill-the-league/code-trigger-panel.png` and
+  `league-lobby-full.png` for the team.
 
 ## Seeded setup (not part of the joins)
 
@@ -98,10 +108,11 @@ Recorded run on the `feat/fill-the-league-walkthrough` branch (Playwright
   shows "League full — 6 of 6 participants", and clicking the existing
   **Seed fantasy draft** action built the real "Sunset Open draft" lobby with
   an enabled **Start draft** button. Nothing beyond that is claimed.
-- **Video** — 7 narrated segments (one page at a time) stitched to
-  `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`, 51.3 s,
+- **Video** — 8 narrated segments (one page at a time) stitched to
+  `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`, 57.3 s,
   1280×720 H.264 + AAC narration (ElevenLabs, one clip per segment).
-  Playwright: 1 passed.
+  Playwright: 1 passed. Annotated code snapshots: `code-trigger-panel.png`,
+  `league-lobby-full.png`.
 
 ## Known gaps
 

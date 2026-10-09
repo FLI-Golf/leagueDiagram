@@ -1904,6 +1904,54 @@ form[data-action='create-season'] label span {
   font-size: 0.82rem;
 }
 
+.code-callout {
+  margin-top: 14px;
+}
+
+.code-callout-pre {
+  background: #0f172a;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.code-line {
+  display: block;
+  white-space: pre;
+  color: #dbe7ff;
+}
+
+.code-arrow {
+  display: inline-block;
+  width: 1.2em;
+  color: #f97316;
+}
+
+.code-lineno {
+  display: inline-block;
+  width: 2.6em;
+  color: #64748b;
+  user-select: none;
+}
+
+.code-line--trigger {
+  background: rgba(249, 115, 22, 0.14);
+  border-left: 3px solid #f97316;
+}
+
+.code-line--trigger code {
+  color: #ffd7b0;
+}
+
+.code-source-note {
+  font-size: 0.72rem;
+  opacity: 0.75;
+  margin-top: 6px;
+}
+
 @media (max-width: 640px) {
   .hero {
     flex-direction: column;

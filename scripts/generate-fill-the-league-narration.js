@@ -33,6 +33,11 @@ const SEGMENTS = [
     audio: '07-verify.mp3',
     text: 'After reloading, all six memberships remain. The owner seeds the draft, and the Sunset Open draft is ready to start.',
   },
+  {
+    video: '08-how-the-trigger-fires.webm',
+    audio: '08-trigger.mp3',
+    text: 'At six of six, buildIfReady builds a draft room for every remaining tournament at once.',
+  },
 ];
 
 const loadApiKey = () => {
