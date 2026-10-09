@@ -86,8 +86,10 @@ node scripts/generate-fill-the-league-narration.js   # optional: adds ElevenLabs
 ```
 
 The spec records one video per browser context and saves them under
-`demo/captures/fill-the-league/`; when FFmpeg is available they are stitched
-in join order into `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`.
+`demo/captures/fill-the-league/` (intermediates — Playwright wipes
+`demo/captures` at the start of every test run); when FFmpeg is available they
+are stitched in join order into the final deliverable
+`demo/exports/fill-the-league/fill-the-league-walkthrough.mp4`.
 The narration script generates one ElevenLabs clip per segment, muxes each clip
 with its segment, and re-stitches the final narrated MP4 at the same path.
 Short caption bars are injected as a DOM overlay (`demo/helpers/demoCaptions.ts`)
@@ -98,8 +100,8 @@ joins on camera (Owen Bell, Nina Alvarez) → the final join on camera
 (Taylor Reed, 6 of 6) → the owner reloading to show the full six-member list
 and the seeded draft lobby. Participants three and four (Harper Quinn, Marcus
 Webb) still join through the same UI in their own contexts, just off-camera, to
-keep the video short. `demo/captures/` is git-ignored; no authentication state
-is written to disk.
+keep the video short. `demo/captures/` and `demo/exports/` are git-ignored; no
+authentication state is written to disk.
 
 ## Verification results
 
@@ -120,7 +122,7 @@ Recorded run on the `feat/fill-the-league-walkthrough` branch (Playwright
   **Seed fantasy draft** action built the real "Sunset Open draft" lobby with
   an enabled **Start draft** button. Nothing beyond that is claimed.
 - **Video** — 5 narrated, captioned segments (application UI only) stitched to
-  `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`, 37.5 s,
+  `demo/exports/fill-the-league/fill-the-league-walkthrough.mp4`, 37.7 s,
   1280×720 H.264 + AAC narration (ElevenLabs, one clip per segment).
   Playwright: 1 passed.
 

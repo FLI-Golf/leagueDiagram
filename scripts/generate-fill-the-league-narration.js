@@ -16,7 +16,9 @@ import process from 'node:process';
 
 const CAPTURE_DIR = path.resolve(process.cwd(), 'demo', 'captures', 'fill-the-league');
 const NARRATION_DIR = path.join(CAPTURE_DIR, 'narration');
-const FINAL_MP4 = path.join(CAPTURE_DIR, 'fill-the-league-walkthrough.mp4');
+// Finals live outside demo/captures, which Playwright wipes on every run.
+const EXPORT_DIR = path.resolve(process.cwd(), 'demo', 'exports', 'fill-the-league');
+const FINAL_MP4 = path.join(EXPORT_DIR, 'fill-the-league-walkthrough.mp4');
 
 const VOICE_ID = process.env.DEMO_NARRATION_VOICE ?? '21m00Tcm4TlvDq8ikWAM';
 
@@ -73,6 +75,7 @@ const generateNarration = async (apiKey, text, outputFile) => {
 
 const main = async () => {
   fs.mkdirSync(NARRATION_DIR, { recursive: true });
+  fs.mkdirSync(EXPORT_DIR, { recursive: true });
 
   for (const segment of SEGMENTS) {
     if (!fs.existsSync(path.join(CAPTURE_DIR, segment.video))) {

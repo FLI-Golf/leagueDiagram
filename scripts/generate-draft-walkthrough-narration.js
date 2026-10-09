@@ -17,7 +17,10 @@ import process from 'node:process';
 const CAPTURE_DIR = path.resolve(process.cwd(), 'demo', 'captures', 'draft-walkthrough');
 const VIDEO_WEBM = path.join(CAPTURE_DIR, 'draft-walkthrough.webm');
 const AUDIO_MP3 = path.join(CAPTURE_DIR, 'draft-narration.mp3');
-const FINAL_MP4 = path.join(CAPTURE_DIR, 'draft-walkthrough.mp4');
+// Finals live outside demo/captures, which Playwright wipes on every run.
+const EXPORT_DIR = path.resolve(process.cwd(), 'demo', 'exports', 'draft-walkthrough');
+const FINAL_MP4 = path.join(EXPORT_DIR, 'draft-walkthrough.mp4');
+const FINAL_WEBM = path.join(EXPORT_DIR, 'draft-walkthrough.webm');
 
 const VOICE_ID = process.env.DEMO_NARRATION_VOICE ?? '21m00Tcm4TlvDq8ikWAM';
 
@@ -79,6 +82,8 @@ const main = async () => {
 
   const audioFilter = `[1:a]apad,atrim=0:${videoDuration.toFixed(2)},afade=t=out:st=${Math.max(0, videoDuration - 0.4).toFixed(2)}:d=0.4[a]`;
 
+  fs.mkdirSync(EXPORT_DIR, { recursive: true });
+
   // Primary deliverable: narrated MP4.
   execFileSync('ffmpeg', [
     '-y',
@@ -97,9 +102,8 @@ const main = async () => {
     FINAL_MP4,
   ], { stdio: 'ignore' });
 
-  // Also mux the narration back into the WebM (Playwright records raw video
-  // without audio), so the .webm is not mistaken for a narration-less cut.
-  const narratedWebm = `${VIDEO_WEBM}.narrated.webm`;
+  // Also produce a narrated WebM (Playwright records raw video without
+  // audio), so the .webm is not mistaken for a narration-less cut.
   execFileSync('ffmpeg', [
     '-y',
     '-i', VIDEO_WEBM,
@@ -111,12 +115,11 @@ const main = async () => {
     '-c:v', 'copy',
     '-c:a', 'libopus',
     '-b:a', '128k',
-    narratedWebm,
+    FINAL_WEBM,
   ], { stdio: 'ignore' });
-  fs.renameSync(narratedWebm, VIDEO_WEBM);
 
   console.log(`Narrated walkthrough: ${FINAL_MP4} (${durationOf(FINAL_MP4).toFixed(1)}s)`);
-  console.log(`Narration also muxed into ${VIDEO_WEBM}`);
+  console.log(`Narrated WebM: ${FINAL_WEBM}`);
 };
 
 await main();

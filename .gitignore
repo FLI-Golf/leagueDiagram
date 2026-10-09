@@ -4,5 +4,6 @@ coverage/
 .vite/
 *.log
 demo/captures/
+demo/exports/
 playwright-report/
 test-results/

@@ -19,8 +19,11 @@ import { showDemoCaption } from '../helpers/demoCaptions';
  */
 
 const BASE_URL = process.env.DEMO_BASE_URL ?? 'http://localhost:5173';
+// Playwright wipes its outputDir (demo/captures) at the start of every run, so
+// only intermediates live there; the final deliverables go to demo/exports.
 const CAPTURE_DIR = path.resolve(process.cwd(), 'demo', 'captures', 'draft-walkthrough');
-const FINAL_MP4 = path.join(CAPTURE_DIR, 'draft-walkthrough.mp4');
+const EXPORT_DIR = path.resolve(process.cwd(), 'demo', 'exports', 'draft-walkthrough');
+const FINAL_MP4 = path.join(EXPORT_DIR, 'draft-walkthrough.mp4');
 const TARGET_MAX_SECONDS = 60;
 
 const PARTICIPANTS = [
@@ -96,6 +99,7 @@ const toMp4 = (webmPath: string): string | null => {
 test('Draft walkthrough: owner seeds, starts, and completes the Sunset Open draft', async ({ browser }) => {
   test.setTimeout(240000);
   fs.mkdirSync(CAPTURE_DIR, { recursive: true });
+  fs.mkdirSync(EXPORT_DIR, { recursive: true });
 
   // --- Seeded background (documented): refill the league lobby through the join
   // UI, off-camera, so the owner's Fantasy league view shows the full 6 of 6. ---

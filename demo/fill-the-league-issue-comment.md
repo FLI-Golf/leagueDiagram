@@ -10,7 +10,7 @@
 
 ## Fill the league — walkthrough complete
 
-**Video:** `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`
+**Video:** `demo/exports/fill-the-league/fill-the-league-walkthrough.mp4`
 (~38 s, 1280×720 H.264 with ElevenLabs voice narration and short caption bars;
 git-ignored, application UI only — owner start, first two joins, the final
 join, and the full six-member list). Participants three and four join through

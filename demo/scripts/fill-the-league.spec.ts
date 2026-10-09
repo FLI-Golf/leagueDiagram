@@ -22,8 +22,11 @@ import { showDemoCaption } from '../helpers/demoCaptions';
  */
 
 const BASE_URL = process.env.DEMO_BASE_URL ?? 'http://localhost:5173';
+// Playwright wipes its outputDir (demo/captures) at the start of every run, so
+// only intermediates live there; the final deliverables go to demo/exports.
 const CAPTURE_DIR = path.resolve(process.cwd(), 'demo', 'captures', 'fill-the-league');
-const FINAL_MP4 = path.join(CAPTURE_DIR, 'fill-the-league-walkthrough.mp4');
+const EXPORT_DIR = path.resolve(process.cwd(), 'demo', 'exports', 'fill-the-league');
+const FINAL_MP4 = path.join(EXPORT_DIR, 'fill-the-league-walkthrough.mp4');
 const TARGET_MAX_SECONDS = 60;
 
 const OWNER = { id: 'fantasy-owner', name: 'Fantasy Owner' };
@@ -158,6 +161,7 @@ const stitchSegments = (segments: string[]): string | null => {
 test('Fill the league: owner plus five participants join through the UI', async ({ browser, request }) => {
   test.setTimeout(240000);
   fs.mkdirSync(CAPTURE_DIR, { recursive: true });
+  fs.mkdirSync(EXPORT_DIR, { recursive: true });
   const segments: string[] = [];
 
   // --- Seeded setup (documented): reset the demo league so it starts with the owner only. ---

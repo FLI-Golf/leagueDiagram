@@ -49,10 +49,11 @@ npx playwright test draft-walkthrough              # or: npm run demo:draft
 node scripts/generate-draft-walkthrough-narration.js   # narration (needs ELEVENLABS_API_KEY, reads .env)
 ```
 
-Output: `demo/captures/draft-walkthrough/draft-walkthrough.mp4`
-(31.0 s, 1280×720 H.264 + AAC). The raw Playwright `.webm` next to it gets the
-same narration muxed in (Playwright records video without audio), so both
-files play with voice. `demo/captures/` is git-ignored.
+Output: `demo/exports/draft-walkthrough/draft-walkthrough.mp4`
+(38.0 s, 1280×720 H.264 + AAC) plus a narrated `draft-walkthrough.webm` next to
+it (Playwright records raw video without audio, so narration is muxed in
+afterwards). Finals live in `demo/exports/` because Playwright wipes
+`demo/captures/` on every run; both dirs are git-ignored.
 
 ## Known gaps
 
