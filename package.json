@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "demo:fantasy": "playwright test fantasy-owner-intro",
-    "demo:fantasy:headed": "xvfb-run -a playwright test fantasy-owner-intro --headed"
+    "demo:fantasy:headed": "xvfb-run -a playwright test fantasy-owner-intro --headed",
+    "demo:fill-league": "playwright test fill-the-league"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
