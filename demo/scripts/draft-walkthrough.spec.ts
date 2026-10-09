@@ -137,16 +137,44 @@ test('Draft walkthrough: owner seeds, starts, and completes the Sunset Open draf
   const draftClock = page.locator('.draft-clock-value').first();
   await moveMouseToElement(page, draftClock, QUICK_MOVE);
 
-  // Let the 7-second clock run through the first auto-picks so the draft unfolds naturally.
+  // Let the 7-second clock run through the first auto-pick so the draft unfolds naturally.
   await demoWait(8000);
   await expect(page.getByText('Picks so far')).toBeVisible();
   await expect(page.locator('.draft-pick-log li').first()).toBeVisible();
-  await demoWait(7000);
-  await expect(page.locator('.draft-pick-log li').nth(1)).toBeVisible();
 
   const recommendedPro = page.getByText('Recommended pro');
   await moveMouseToElement(page, recommendedPro, QUICK_MOVE);
-  await demoWait(1000);
+  await demoWait(800);
+
+  // Pause the live clock so the round-3 board stays put for the showcase.
+  const autoPickToggle = page.getByRole('button', { name: /Auto-pick on expiry/ });
+  await moveAndClick(page, autoPickToggle, { ...QUICK_MOVE, pauseBeforeClickMs: 250 });
+
+  // Fast-forward through rounds 1-2 with the app's development control.
+  await showDemoCaption(page, 'Fast-forward to round 3');
+  const seedRoundsButton = page.getByRole('button', { name: 'Seed rounds 1 & 2' });
+  await moveAndClick(page, seedRoundsButton, { ...QUICK_MOVE, pauseBeforeClickMs: 350 });
+  await expect(page.getByText(/Round 3 · Pick/)).toBeVisible();
+  await demoWait(500);
+
+  // Gender filtering in rounds 3-4: a roster already holding two MPO or two FPO
+  // players has that gender blocked on the board, so every roster finishes 2+2.
+  await showDemoCaption(page, 'Rounds 3–4 — rosters full at MPO or FPO have that gender blocked');
+  let blockedPlayers = page.locator('.draft-player--blocked');
+  for (let attempt = 0; attempt < 6 && (await blockedPlayers.count()) === 0; attempt += 1) {
+    await moveAndClick(page, page.getByRole('button', { name: 'Draft next pick' }), { ...QUICK_MOVE, pauseBeforeClickMs: 200 });
+    await demoWait(400);
+    blockedPlayers = page.locator('.draft-player--blocked');
+  }
+  await expect(blockedPlayers.first()).toBeVisible();
+  await expect(blockedPlayers.first()).toHaveAttribute('title', /Roster already full at/);
+  console.log(`[draft-walkthrough] Gender filtering: "${await blockedPlayers.first().getAttribute('title')}" (${await blockedPlayers.count()} blocked on this board)`);
+  try {
+    await moveMouseToElement(page, blockedPlayers.first(), QUICK_MOVE);
+  } catch {
+    // The live board can re-render mid-showcase; the assertions above already proved the filtering.
+  }
+  await demoWait(2600);
 
   await showDemoCaption(page, 'Fast-forward — every remaining pick completes the draft');
   const completeDraftButton = page.getByRole('button', { name: 'Complete draft' });

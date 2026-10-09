@@ -4,7 +4,7 @@ Playwright walkthrough of the fantasy draft, companion to
 [fill-the-league.md](fill-the-league.md) (same conventions: dev-server lobby
 stand-in, caption overlays, ElevenLabs narration, git-ignored captures).
 
-## What the video shows (application UI only, ~31 s)
+## What the video shows (application UI only, ~38 s)
 
 One continuous owner session on the Fantasy league page:
 
@@ -15,7 +15,12 @@ One continuous owner session on the Fantasy league page:
 2. **Start the draft** — the 7-second pick clock runs live; when it hits zero
    the recommended pro is auto-picked. The pick log ("Picks so far") fills
    with the first picks while roster tiles show "N of 4 drafted".
-3. **Complete the draft** — the owner fast-forwards with the **Complete
+3. **Rounds 3–4 gender filtering** — after fast-forwarding with **Seed rounds
+   1 & 2**, the round-3 board shows gender filtering live: a roster already
+   holding two MPO or two FPO players has that gender blocked (greyed,
+   disabled, "Roster already full at …"), so every roster finishes 2 MPO + 2
+   FPO. The auto-pick clock is paused for this showcase so the board stays put.
+4. **Complete the draft** — the owner fast-forwards with the **Complete
    draft** development control; the "Final rosters / Fantasy team leaderboard"
    lists all six fantasy teams with their MPO/FPO rosters, marked *Projected*
    until an admin confirms event scores.
@@ -31,7 +36,9 @@ One continuous owner session on the Fantasy league page:
 
 - Draft lobby heading "Sunset Open draft" and enabled **Start draft** after seeding.
 - "Round 1 · Pick 1" banner and a running pick clock after **Start draft**.
-- At least two auto-picks land in the pick log while watching live.
+- At least one live auto-pick lands in the pick log while watching.
+- In round 3, the board shows at least one gender-blocked player
+  (`Roster already full at …`); the run logs how many were blocked.
 - After **Complete draft**: "Fantasy team leaderboard" with exactly six rows.
 
 ## Repeatable recording command

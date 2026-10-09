@@ -21,11 +21,11 @@ const FINAL_MP4 = path.join(CAPTURE_DIR, 'draft-walkthrough.mp4');
 
 const VOICE_ID = process.env.DEMO_NARRATION_VOICE ?? '21m00Tcm4TlvDq8ikWAM';
 
-// Sized to the ~35-second single-take recording.
+// Sized to the ~40-second single-take recording.
 const NARRATION_TEXT =
-  'With the league full at six of six, the owner seeds the draft. The Sunset Open draft is ready, so the owner starts the clock. ' +
-  'Each pick runs seven seconds; at zero, the recommended pro is taken automatically. Then we fast-forward through the remaining picks. ' +
-  'The draft completes — all six rosters are set, with the leaderboard showing projected ratings until scores are confirmed.';
+  'With the league full at six of six, the owner seeds the draft and starts the clock; at zero, the recommended pro is taken automatically. ' +
+  'Fast-forward to round three: rosters already holding two MPO or two FPO players have that gender blocked on the board, so every roster finishes with two of each. ' +
+  'Then we complete the draft — all six rosters are set, with projected ratings until scores are confirmed.';
 
 const loadApiKey = () => {
   if (process.env.ELEVENLABS_API_KEY) {
