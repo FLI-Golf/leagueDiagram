@@ -77,12 +77,15 @@ const main = async () => {
     console.log(`Note: narration (${audioDuration.toFixed(1)}s) exceeds the video (${videoDuration.toFixed(1)}s); it will fade out early.`);
   }
 
+  const audioFilter = `[1:a]apad,atrim=0:${videoDuration.toFixed(2)},afade=t=out:st=${Math.max(0, videoDuration - 0.4).toFixed(2)}:d=0.4[a]`;
+
+  // Primary deliverable: narrated MP4.
   execFileSync('ffmpeg', [
     '-y',
     '-i', VIDEO_WEBM,
     '-i', AUDIO_MP3,
     '-filter_complex',
-    `[1:a]apad,atrim=0:${videoDuration.toFixed(2)},afade=t=out:st=${Math.max(0, videoDuration - 0.4).toFixed(2)}:d=0.4[a]`,
+    audioFilter,
     '-map', '0:v',
     '-map', '[a]',
     '-c:v', 'libx264',
@@ -94,7 +97,26 @@ const main = async () => {
     FINAL_MP4,
   ], { stdio: 'ignore' });
 
+  // Also mux the narration back into the WebM (Playwright records raw video
+  // without audio), so the .webm is not mistaken for a narration-less cut.
+  const narratedWebm = `${VIDEO_WEBM}.narrated.webm`;
+  execFileSync('ffmpeg', [
+    '-y',
+    '-i', VIDEO_WEBM,
+    '-i', AUDIO_MP3,
+    '-filter_complex',
+    audioFilter,
+    '-map', '0:v',
+    '-map', '[a]',
+    '-c:v', 'copy',
+    '-c:a', 'libopus',
+    '-b:a', '128k',
+    narratedWebm,
+  ], { stdio: 'ignore' });
+  fs.renameSync(narratedWebm, VIDEO_WEBM);
+
   console.log(`Narrated walkthrough: ${FINAL_MP4} (${durationOf(FINAL_MP4).toFixed(1)}s)`);
+  console.log(`Narration also muxed into ${VIDEO_WEBM}`);
 };
 
 await main();

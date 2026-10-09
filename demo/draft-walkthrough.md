@@ -43,7 +43,9 @@ node scripts/generate-draft-walkthrough-narration.js   # narration (needs ELEVEN
 ```
 
 Output: `demo/captures/draft-walkthrough/draft-walkthrough.mp4`
-(31.0 s, 1280×720 H.264 + AAC). `demo/captures/` is git-ignored.
+(31.0 s, 1280×720 H.264 + AAC). The raw Playwright `.webm` next to it gets the
+same narration muxed in (Playwright records video without audio), so both
+files play with voice. `demo/captures/` is git-ignored.
 
 ## Known gaps
 
