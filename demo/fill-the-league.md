@@ -69,12 +69,15 @@ That is impossible with the app as-is:
 ```bash
 npm install
 npx playwright install chromium --with-deps
-npx playwright test fill-the-league
+npx playwright test fill-the-league   # records segments + stitches the MP4
+node scripts/generate-fill-the-league-narration.js   # optional: adds ElevenLabs narration (needs ELEVENLABS_API_KEY, reads .env)
 ```
 
-The spec records one video per browser context, saves them under
-`demo/captures/fill-the-league/`, and (when FFmpeg is available) stitches them
+The spec records one video per browser context and saves them under
+`demo/captures/fill-the-league/`; when FFmpeg is available they are stitched
 in join order into `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`.
+The narration script generates one ElevenLabs clip per segment, muxes each clip
+with its segment, and re-stitches the final narrated MP4 at the same path.
 `demo/captures/` is git-ignored; no authentication state is written to disk.
 
 ## Verification results
@@ -95,9 +98,10 @@ Recorded run on the `feat/fill-the-league-walkthrough` branch (Playwright
   shows "League full — 6 of 6 participants", and clicking the existing
   **Seed fantasy draft** action built the real "Sunset Open draft" lobby with
   an enabled **Start draft** button. Nothing beyond that is claimed.
-- **Video** — 7 segments (one page at a time) stitched to
-  `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`, 51.2 s,
-  1280×720 H.264. Playwright: 1 passed.
+- **Video** — 7 narrated segments (one page at a time) stitched to
+  `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`, 51.3 s,
+  1280×720 H.264 + AAC narration (ElevenLabs, one clip per segment).
+  Playwright: 1 passed.
 
 ## Known gaps
 

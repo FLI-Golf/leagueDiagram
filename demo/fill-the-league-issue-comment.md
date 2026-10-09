@@ -11,12 +11,13 @@
 ## Fill the league — walkthrough complete
 
 **Video:** `demo/captures/fill-the-league/fill-the-league-walkthrough.mp4`
-(51 s, 1280×720 H.264; git-ignored, one page at a time — owner start, five
-joins, final verification). Repeatable command:
+(51 s, 1280×720 H.264 with ElevenLabs voice narration; git-ignored, one page at
+a time — owner start, five joins, final verification). Repeatable command:
 
 ```bash
 npm install && npx playwright install chromium --with-deps
 npx playwright test fill-the-league   # or: npm run demo:fill-league
+node scripts/generate-fill-the-league-narration.js   # narration (needs ELEVENLABS_API_KEY)
 ```
 
 **Commit / environment:** `18c7762` on branch `feat/fill-the-league-walkthrough`
