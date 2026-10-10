@@ -107,6 +107,21 @@ const DIAGRAM_TOURS: Record<string, DiagramTour> = {
       { name: 'Team', summary: 'A mixed pair of pros entered in the tournament.' },
     ],
   },
+  pipelines: {
+    slug: 'pipelines',
+    tabLabel: 'Pipelines',
+    title: 'Approval pipelines',
+    overviewCaption: 'The Pipelines entity map at a glance — nothing becomes official without review',
+    stops: [
+      { name: 'ScorekeeperPipeline', summary: 'Collects hole scores per group and blocks approval until the card is complete.' },
+      { name: 'TournamentResult', summary: 'One tournament: the course it is played on, the teams entered, and the ranked scorecards.' },
+      { name: 'FantasyScoring', summary: 'Derives fantasy standings from approved event scores.' },
+      { name: 'Group', summary: 'The paired teams a scorekeeper is assigned to.' },
+      { name: 'ScoreEntry', summary: 'One team score on one hole.' },
+      { name: 'ContentPipeline', summary: 'Holds pro posts until a league or super admin approves them.' },
+      { name: 'ContentSubmission', summary: 'A post with optional photo or video, plus its review status.' },
+    ],
+  },
 };
 
 const VIEW_KEY = process.env.DIAGRAM_VIEW ?? 'pros';

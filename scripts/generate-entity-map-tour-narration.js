@@ -43,6 +43,11 @@ const NARRATION_BY_VIEW = {
     'The SponsorshipProgram holds all of a season\u2019s sponsorships, starting with the single title sponsor. Each Sponsorship is one agreement: sponsor, tier, scope, amount, and status. ' +
     'A Sponsor is the brand behind an agreement. The Season carries the title sponsorship, the Course carries venue deals, ' +
     'each Hole carries branding, and Players and Teams carry endorsement deals.',
+  pipelines:
+    'Here is the pipelines entity map at a glance — nothing becomes official without review. Green edges mean has many; blue edges mean has one. ' +
+    'The ScorekeeperPipeline blocks approval until every team has a score for every hole. TournamentResult holds the ranked scorecards, ' +
+    'and FantasyScoring derives fantasy standings from approved scores. A Group is the paired teams a scorekeeper covers; each ScoreEntry is one team score on one hole. ' +
+    'And the ContentPipeline holds pro posts until an admin approves them, one ContentSubmission at a time.',
 };
 
 const NARRATION_TEXT = NARRATION_BY_VIEW[VIEW_KEY];
