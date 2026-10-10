@@ -1,34 +1,49 @@
 /**
- * Adds narration to the entity map tour.
+ * Adds narration to an entity map tour recording.
  *
  * Generates one ElevenLabs clip for the single-segment recording (when
  * ELEVENLABS_API_KEY is set, via env or .env), muxes it with the video, and
  * writes the narrated outputs to demo/exports/entity-map-tour/.
  *
- * Usage: node scripts/generate-entity-map-tour-narration.js
- * Prereq: run `npx playwright test entity-map-tour` first so the WebM exists.
+ * Usage: node scripts/generate-entity-map-tour-narration.js [--view league]
+ * Prereq: run `DIAGRAM_VIEW=<view> npx playwright test entity-map-tour` first.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-const CAPTURE_DIR = path.resolve(process.cwd(), 'demo', 'captures', 'entity-map-tour');
-const VIDEO_WEBM = path.join(CAPTURE_DIR, 'entity-map-tour.webm');
-const AUDIO_MP3 = path.join(CAPTURE_DIR, 'entity-map-tour-narration.mp3');
+const viewArg = process.argv.find((arg) => arg.startsWith('--view='));
+const VIEW_KEY = viewArg ? viewArg.slice('--view='.length) : 'pros';
+
+const NARRATION_BY_VIEW = {
+  pros:
+    'A guided tour of the pros entity map — first the whole map at a glance. Green edges mean has many; blue edges mean has one. ' +
+    'UserProfile is the account behind a pro, admin, scorekeeper, or fan. Player is a pro on a team, with scorecards and an account. ' +
+    'A Team is a mixed pair of pros entered in the tournament. The Scorecard holds hole-by-hole results for one pro in one round. ' +
+    'A ContentSubmission is a post with its review status. And the ContentPipeline holds pro posts until an admin approves them.',
+  league:
+    'Here is the league entity map at a glance — then each entity in turn. Green edges mean has many; blue edges mean has one. ' +
+    'A UserLeague is the membership container that owns invites, participants, and draft orders. The Season is the parent record with its purse and sponsorship program. ' +
+    'The SponsorshipProgram holds the season sponsorships, and each Sponsorship is one agreement with a brand. ' +
+    'SeasonBootstrapResult is the assembled seed handed to the app. The EventSchedule carries the dated tournaments, ' +
+    'TournamentResult the ranked results for one event, and the LeagueTable rolls every event up into cumulative standings.',
+};
+
+const NARRATION_TEXT = NARRATION_BY_VIEW[VIEW_KEY];
+if (!NARRATION_TEXT) {
+  throw new Error(`Unknown view "${VIEW_KEY}". Known views: ${Object.keys(NARRATION_BY_VIEW).join(', ')}`);
+}
+
+const CAPTURE_DIR = path.resolve(process.cwd(), 'demo', 'captures', `entity-map-tour-${VIEW_KEY}`);
+const VIDEO_WEBM = path.join(CAPTURE_DIR, `entity-map-tour-${VIEW_KEY}.webm`);
+const AUDIO_MP3 = path.join(CAPTURE_DIR, `entity-map-tour-${VIEW_KEY}-narration.mp3`);
 // Finals live outside demo/captures, which Playwright wipes on every run.
 const EXPORT_DIR = path.resolve(process.cwd(), 'demo', 'exports', 'entity-map-tour');
-const FINAL_MP4 = path.join(EXPORT_DIR, 'entity-map-tour.mp4');
-const FINAL_WEBM = path.join(EXPORT_DIR, 'entity-map-tour.webm');
+const FINAL_MP4 = path.join(EXPORT_DIR, `entity-map-tour-${VIEW_KEY}.mp4`);
+const FINAL_WEBM = path.join(EXPORT_DIR, `entity-map-tour-${VIEW_KEY}.webm`);
 
 const VOICE_ID = process.env.DEMO_NARRATION_VOICE ?? '21m00Tcm4TlvDq8ikWAM';
-
-// Sized to the ~40-second single-take recording.
-const NARRATION_TEXT =
-  'A guided tour of the pros entity map — first the whole map at a glance. Green edges mean has many; blue edges mean has one. ' +
-  'UserProfile is the account behind a pro, admin, scorekeeper, or fan. Player is a pro on a team, with scorecards and an account. ' +
-  'A Team is a mixed pair of pros entered in the tournament. The Scorecard holds hole-by-hole results for one pro in one round. ' +
-  'A ContentSubmission is a post with its review status. And the ContentPipeline holds pro posts until an admin approves them.';
 
 const loadApiKey = () => {
   if (process.env.ELEVENLABS_API_KEY) {
@@ -52,7 +67,7 @@ const durationOf = (file) =>
 
 const main = async () => {
   if (!fs.existsSync(VIDEO_WEBM)) {
-    throw new Error(`Missing ${VIDEO_WEBM}. Run \`npx playwright test entity-map-tour\` first.`);
+    throw new Error(`Missing ${VIDEO_WEBM}. Run \`DIAGRAM_VIEW=${VIEW_KEY} npx playwright test entity-map-tour\` first.`);
   }
 
   const apiKey = loadApiKey();

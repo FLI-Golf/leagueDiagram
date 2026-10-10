@@ -3,38 +3,84 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 import { expect, test } from '@playwright/test';
-import { demoWait, moveAndClick, moveMouseToElement } from '../helpers/demoCursor';
+import { demoWait, moveAndClick, moveMouseTo, moveMouseToElement } from '../helpers/demoCursor';
 import { showDemoCaption } from '../helpers/demoCaptions';
 
 /**
- * Entity map highlight tour: sign in as Super Admin (the diagram is
- * siteAdmin-only), open the Pros view, and walk every entity on the canvas.
- * Hovering a node shows the app's own info tooltip with the entity summary —
- * the tour moves the demo cursor onto each node so the tooltip reads as the
- * highlight, and adds a temporary outline ring so the active node pops on
- * video. See demo/entity-map-tour.md.
+ * Entity map highlight tour. Sign in as Super Admin (the diagram is
+ * siteAdmin-only), open a diagram view, show the whole map at a glance, then
+ * walk every entity on the canvas. Hovering a node shows the app's own info
+ * tooltip with the entity summary — the tour moves the demo cursor onto each
+ * node so the tooltip reads as the highlight, and adds a temporary outline
+ * ring so the active node pops on video. See demo/entity-map-tour.md.
+ *
+ * Select the view with DIAGRAM_VIEW (default 'pros'):
+ *   DIAGRAM_VIEW=league npx playwright test entity-map-tour
  */
+
+type TourStop = { name: string; summary: string };
+
+type DiagramTour = {
+  /** DIAGRAM_VIEWS slug and tab label in the app. */
+  slug: string;
+  tabLabel: string;
+  /** The view's rendered page heading. */
+  title: string;
+  /** One-line overview caption. */
+  overviewCaption: string;
+  stops: TourStop[];
+};
+
+// Tooltips show the shared entity summary (first definition across all
+// diagram views), so these summaries match what the hover tooltip renders.
+const DIAGRAM_TOURS: Record<string, DiagramTour> = {
+  pros: {
+    slug: 'pros',
+    tabLabel: 'Pros',
+    title: 'Pro players and their content',
+    overviewCaption: 'The Pros entity map at a glance — six entities and how they connect',
+    stops: [
+      { name: 'UserProfile', summary: 'The account behind a pro, admin, scorekeeper, or fan.' },
+      { name: 'Player', summary: 'A pro on a team, with scorecards and an account.' },
+      { name: 'Team', summary: 'A mixed pair of pros entered in the tournament.' },
+      { name: 'Scorecard', summary: 'Hole-by-hole results for one pro in one round.' },
+      { name: 'ContentSubmission', summary: 'A post with optional photo or video, plus its review status.' },
+      { name: 'ContentPipeline', summary: 'Holds pro posts until a league or super admin approves them.' },
+    ],
+  },
+  league: {
+    slug: 'league',
+    tabLabel: 'League',
+    title: 'League, season, and schedule',
+    overviewCaption: 'The League entity map at a glance — memberships, season, schedule, standings',
+    stops: [
+      { name: 'UserLeague', summary: 'The league membership that owns invites, participants, and draft orders.' },
+      { name: 'Season', summary: 'The parent record: purse, league reference, schedule, and sponsorship program.' },
+      { name: 'SponsorshipProgram', summary: 'Season sponsorships, starting with the single title sponsor.' },
+      { name: 'Sponsorship', summary: 'One agreement: sponsor, tier, scope, amount, and status.' },
+      { name: 'SeasonBootstrapResult', summary: 'The assembled season seed handed to the app.' },
+      { name: 'EventSchedule', summary: 'Calendarized tournaments across a season.' },
+      { name: 'TournamentResult', summary: 'One tournament: the course it is played on, the teams entered, and the ranked scorecards.' },
+      { name: 'LeagueTable', summary: 'Cumulative standings rolled up from every approved event.' },
+    ],
+  },
+};
+
+const VIEW_KEY = process.env.DIAGRAM_VIEW ?? 'pros';
+const TOUR = DIAGRAM_TOURS[VIEW_KEY];
+if (!TOUR) {
+  throw new Error(`Unknown DIAGRAM_VIEW "${VIEW_KEY}". Known views: ${Object.keys(DIAGRAM_TOURS).join(', ')}`);
+}
 
 const BASE_URL = process.env.DEMO_BASE_URL ?? 'http://localhost:5173';
 // Playwright wipes its outputDir (demo/captures) at the start of every run, so
 // only intermediates live there; the final deliverables go to demo/exports.
-const CAPTURE_DIR = path.resolve(process.cwd(), 'demo', 'captures', 'entity-map-tour');
+const CAPTURE_DIR = path.resolve(process.cwd(), 'demo', 'captures', `entity-map-tour-${VIEW_KEY}`);
 const EXPORT_DIR = path.resolve(process.cwd(), 'demo', 'exports', 'entity-map-tour');
-const FINAL_MP4 = path.join(EXPORT_DIR, 'entity-map-tour.mp4');
+const FINAL_MP4 = path.join(EXPORT_DIR, `entity-map-tour-${VIEW_KEY}.mp4`);
 const TARGET_MAX_SECONDS = 60;
 
 const QUICK_MOVE = { durationMs: 450, steps: 18 };
-
-// The Pros view entities, in the order the page documents them. Tooltips show
-// the shared entity summary (first definition across all diagram views).
-const TOUR_STOPS: Array<{ name: string; summary: string }> = [
-  { name: 'UserProfile', summary: 'The account behind a pro, admin, scorekeeper, or fan.' },
-  { name: 'Player', summary: 'A pro on a team, with scorecards and an account.' },
-  { name: 'Team', summary: 'A mixed pair of pros entered in the tournament.' },
-  { name: 'Scorecard', summary: 'Hole-by-hole results for one pro in one round.' },
-  { name: 'ContentSubmission', summary: 'A post with optional photo or video, plus its review status.' },
-  { name: 'ContentPipeline', summary: 'Holds pro posts until a league or super admin approves them.' },
-];
 
 const toMp4 = (webmPath: string): string | null => {
   try {
@@ -82,7 +128,7 @@ const toMp4 = (webmPath: string): string | null => {
   return FINAL_MP4;
 };
 
-test('Entity map tour: highlight each entity on the Pros diagram view', async ({ browser }) => {
+test(`Entity map tour: highlight each entity on the ${TOUR.tabLabel} diagram view`, async ({ browser }) => {
   test.setTimeout(240000);
   fs.mkdirSync(CAPTURE_DIR, { recursive: true });
   fs.mkdirSync(EXPORT_DIR, { recursive: true });
@@ -103,15 +149,15 @@ test('Entity map tour: highlight each entity on the Pros diagram view', async ({
   await moveAndClick(page, page.getByRole('button', { name: 'Switch account' }), { ...QUICK_MOVE, pauseBeforeClickMs: 300 });
   await expect(page.getByText('Active account:')).toContainText('Super Admin');
 
-  await showDemoCaption(page, 'Super Admin opens the schema view — the Pros entity map');
+  await showDemoCaption(page, `Super Admin opens the schema view — the ${TOUR.tabLabel} entity map`);
   // The home page has no top nav; Super Admin reaches the schema view via the Diagram menu card.
   const diagramLink = page.locator('[data-dashboard-filter="Diagram"]');
   await moveAndClick(page, diagramLink, { ...QUICK_MOVE, pauseBeforeClickMs: 300 });
   await expect(page.getByRole('heading', { name: 'League table diagram' })).toBeVisible();
 
-  const prosTab = page.locator('nav.diagram-tabs').getByRole('link', { name: 'Pros' });
-  await moveAndClick(page, prosTab, { ...QUICK_MOVE, pauseBeforeClickMs: 300 });
-  await expect(page.getByRole('heading', { name: 'Pro players and their content' })).toBeVisible();
+  const viewTab = page.locator('nav.diagram-tabs').getByRole('link', { name: TOUR.tabLabel });
+  await moveAndClick(page, viewTab, { ...QUICK_MOVE, pauseBeforeClickMs: 300 });
+  await expect(page.getByRole('heading', { name: TOUR.title })).toBeVisible();
 
   // Mermaid renders asynchronously.
   const canvas = page.locator('.diagram-canvas');
@@ -119,7 +165,7 @@ test('Entity map tour: highlight each entity on the Pros diagram view', async ({
   await demoWait(600);
 
   // Show the whole diagram at once before touring individual entities.
-  await showDemoCaption(page, 'The Pros entity map at a glance — six entities and how they connect');
+  await showDemoCaption(page, TOUR.overviewCaption);
   await page.evaluate(() => {
     const canvasEl = document.querySelector('.diagram-canvas');
     const svg = canvasEl?.querySelector('svg');
@@ -157,11 +203,32 @@ test('Entity map tour: highlight each entity on the Pros diagram view', async ({
     document.head.appendChild(style);
   });
 
-  for (const stop of TOUR_STOPS) {
+  for (const stop of TOUR.stops) {
     await showDemoCaption(page, `${stop.name} — ${stop.summary}`);
-    const node = canvas.locator('g.node').filter({ hasText: stop.name }).first();
-    await expect(node).toBeVisible();
-    await moveMouseToElement(page, node, QUICK_MOVE);
+
+    // Match the node by its exact label (badge nodes read e.g. "Seasoni", and
+    // plain substring filters would confuse Season with SeasonBootstrapResult).
+    const box = await page.evaluate((activeName) => {
+      const target = [...document.querySelectorAll('.diagram-canvas g.node')].find((entry) => {
+        const label = entry.textContent?.trim() ?? '';
+        return label === activeName || label === `${activeName}i`;
+      });
+      if (!target) {
+        return null;
+      }
+      target.scrollIntoView({ block: 'center' });
+      const rect = target.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    }, stop.name);
+    expect(box, `node ${stop.name} should exist on the canvas`).not.toBeNull();
+    if (!box) {
+      continue;
+    }
+    // Leaving a node can fire pointerout (hiding the tooltip) after the new
+    // pointerover, so re-approach from a neutral point: the last event is then
+    // always the pointerover that shows this node's tooltip.
+    await page.mouse.move(8, 8, { steps: 6 });
+    await moveMouseTo(page, box.x, box.y, QUICK_MOVE);
 
     // The app's own tooltip is the highlight: hovering shows the entity summary.
     const tooltip = page.locator('#diagram-tooltip');
@@ -171,16 +238,17 @@ test('Entity map tour: highlight each entity on the Pros diagram view', async ({
 
     await page.evaluate((activeName) => {
       document.querySelectorAll('.tour-highlight').forEach((entry) => entry.classList.remove('tour-highlight'));
-      const target = [...document.querySelectorAll('.diagram-canvas g.node')].find(
-        (entry) => entry.textContent?.trim() === activeName,
-      );
+      const target = [...document.querySelectorAll('.diagram-canvas g.node')].find((entry) => {
+        const label = entry.textContent?.trim() ?? '';
+        return label === activeName || label === `${activeName}i`;
+      });
       target?.classList.add('tour-highlight');
     }, stop.name);
 
     await demoWait(2100);
   }
 
-  await showDemoCaption(page, 'That is the Pros map — six entities, one approval gate');
+  await showDemoCaption(page, `That is the ${TOUR.tabLabel} map — every entity and connection covered`);
   await demoWait(1800);
 
   await context.close();
@@ -189,7 +257,7 @@ test('Entity map tour: highlight each entity on the Pros diagram view', async ({
     throw new Error('No video recorded for the entity map tour');
   }
   const recordedPath = await video.path();
-  const segmentPath = path.join(CAPTURE_DIR, 'entity-map-tour.webm');
+  const segmentPath = path.join(CAPTURE_DIR, `entity-map-tour-${VIEW_KEY}.webm`);
   fs.renameSync(recordedPath, segmentPath);
 
   const finalMp4 = toMp4(segmentPath);
