@@ -1,13 +1,13 @@
 # Entity map tours — diagram view highlight walkthroughs
 
-Narrated highlight tours of the entity map diagram views
-(`/diagram/pros`, `/diagram/league`, `/diagram/fantasy`, `/diagram/course`,
-`/diagram/sponsorship`, `/diagram/pipelines`), recorded with the same
-conventions as [fill-the-league.md](fill-the-league.md) and
+Narrated highlight tours of the entity map diagram views — all seven:
+`/diagram` (overview), `/diagram/pros`, `/diagram/league`, `/diagram/fantasy`,
+`/diagram/course`, `/diagram/sponsorship`, `/diagram/pipelines`. Recorded with
+the same conventions as [fill-the-league.md](fill-the-league.md) and
 [draft-walkthrough.md](draft-walkthrough.md) (caption overlays, ElevenLabs
 narration, git-ignored captures, finals in `demo/exports/`).
 
-## What each video shows (application UI only, ~28–43 s)
+## What each video shows (application UI only, ~28–55 s)
 
 1. Sign in as **Super Admin** through the mock current-user switcher (the
    diagram is siteAdmin-only) and open the schema view via the **Diagram**
@@ -21,6 +21,11 @@ narration, git-ignored captures, finals in `demo/exports/`).
 
 ### Views covered
 
+- **Overview** (`entity-map-tour-overview.mp4`, ~55 s): the full 18-entity map
+  at a glance, then the 12 key points — Season → UserLeague → EventSchedule →
+  TournamentResult → ScorekeeperPipeline → LeagueTable → Course → Team →
+  Player → ContentPipeline → FantasyLeague → FantasyScoring. (The remaining
+  entities are covered by the per-view tours below.)
 - **Pros** (`entity-map-tour-pros.mp4`): UserProfile → Player → Team →
   Scorecard → ContentSubmission → ContentPipeline.
 - **League** (`entity-map-tour-league.mp4`): UserLeague → Season →
@@ -52,12 +57,14 @@ DIAGRAM_VIEW=fantasy npx playwright test entity-map-tour         # Fantasy view 
 DIAGRAM_VIEW=course npx playwright test entity-map-tour          # Course view (or: npm run demo:entity-map:course)
 DIAGRAM_VIEW=sponsorship npx playwright test entity-map-tour     # Sponsorship view (or: npm run demo:entity-map:sponsorship)
 DIAGRAM_VIEW=pipelines npx playwright test entity-map-tour       # Pipelines view (or: npm run demo:entity-map:pipelines)
+DIAGRAM_VIEW=overview npx playwright test entity-map-tour        # Full map (or: npm run demo:entity-map:overview)
 node scripts/generate-entity-map-tour-narration.js               # narration, Pros (default)
 node scripts/generate-entity-map-tour-narration.js --view=league # narration, League
 node scripts/generate-entity-map-tour-narration.js --view=fantasy # narration, Fantasy
 node scripts/generate-entity-map-tour-narration.js --view=course # narration, Course
 node scripts/generate-entity-map-tour-narration.js --view=sponsorship # narration, Sponsorship
 node scripts/generate-entity-map-tour-narration.js --view=pipelines # narration, Pipelines
+node scripts/generate-entity-map-tour-narration.js --view=overview # narration, Overview
 ```
 
 Output: `demo/exports/entity-map-tour/entity-map-tour-<view>.mp4` (plus a
@@ -75,5 +82,7 @@ narrated `.webm`). Both `demo/captures/` (intermediates) and `demo/exports/`
 - Each hover re-approaches the node from a neutral point: leaving a node can
   fire `pointerout` after the new `pointerover`, which would otherwise hide
   the tooltip right as it appears.
-- The other diagram views (Overview, Fantasy, Course, Sponsorship, Pipelines)
-  can be added by extending `DIAGRAM_TOURS` in the spec.
+- Every tour holds a closing beat, and the narration mux freezes the final
+  frame to fit the audio, so videos never cut off mid-line.
+- All seven diagram views are covered; new entities only need their
+  `DIAGRAM_TOURS` stop list updated.

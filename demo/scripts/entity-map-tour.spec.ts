@@ -122,6 +122,28 @@ const DIAGRAM_TOURS: Record<string, DiagramTour> = {
       { name: 'ContentSubmission', summary: 'A post with optional photo or video, plus its review status.' },
     ],
   },
+  // The full map holds 18 entities; the tour picks the 12 key points that tell
+  // the whole story (the rest get their own per-view tours).
+  overview: {
+    slug: 'overview',
+    tabLabel: 'Overview',
+    title: 'Full entity map',
+    overviewCaption: 'The full entity map at a glance — everything hangs off the season',
+    stops: [
+      { name: 'Season', summary: 'The parent record: purse, league reference, schedule, and sponsorship program.' },
+      { name: 'UserLeague', summary: 'The league membership that owns invites, participants, and draft orders.' },
+      { name: 'EventSchedule', summary: 'Calendarized tournaments across a season.' },
+      { name: 'TournamentResult', summary: 'One tournament: the course it is played on, the teams entered, and the ranked scorecards.' },
+      { name: 'ScorekeeperPipeline', summary: 'Collects hole scores per group and blocks approval until the card is complete.' },
+      { name: 'LeagueTable', summary: 'Cumulative standings rolled up from every approved event.' },
+      { name: 'Course', summary: 'The layout a tournament is played on.' },
+      { name: 'Team', summary: 'A mixed pair of pros entered in the tournament.' },
+      { name: 'Player', summary: 'A pro on a team, with scorecards and an account.' },
+      { name: 'ContentPipeline', summary: 'Holds pro posts until a league or super admin approves them.' },
+      { name: 'FantasyLeague', summary: 'The fantasy competition that owns teams and the draft.' },
+      { name: 'FantasyScoring', summary: 'Derives fantasy standings from approved event scores.' },
+    ],
+  },
 };
 
 const VIEW_KEY = process.env.DIAGRAM_VIEW ?? 'pros';

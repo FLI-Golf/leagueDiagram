@@ -20,7 +20,8 @@
     "demo:entity-map:fantasy": "DIAGRAM_VIEW=fantasy playwright test entity-map-tour",
     "demo:entity-map:course": "DIAGRAM_VIEW=course playwright test entity-map-tour",
     "demo:entity-map:sponsorship": "DIAGRAM_VIEW=sponsorship playwright test entity-map-tour",
-    "demo:entity-map:pipelines": "DIAGRAM_VIEW=pipelines playwright test entity-map-tour"
+    "demo:entity-map:pipelines": "DIAGRAM_VIEW=pipelines playwright test entity-map-tour",
+    "demo:entity-map:overview": "DIAGRAM_VIEW=overview playwright test entity-map-tour"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

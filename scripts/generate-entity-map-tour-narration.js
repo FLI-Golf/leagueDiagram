@@ -48,6 +48,12 @@ const NARRATION_BY_VIEW = {
     'The ScorekeeperPipeline blocks approval until every team has a score for every hole. TournamentResult holds the ranked scorecards, ' +
     'and FantasyScoring derives fantasy standings from approved scores. A Group is the paired teams a scorekeeper covers; each ScoreEntry is one team score on one hole. ' +
     'And the ContentPipeline holds pro posts until an admin approves them, one ContentSubmission at a time.',
+  overview:
+    'Here is the full entity map at a glance — everything hangs off the season. Green edges mean has many; blue edges mean has one. ' +
+    'The Season is the parent record; the UserLeague owns memberships, invites, and draft orders; the EventSchedule carries the tournaments, ' +
+    'and each TournamentResult is one event\u2019s teams and ranked scorecards. The ScorekeeperPipeline blocks approval until every card is complete, ' +
+    'and the LeagueTable rolls results into standings. A Course is the layout played, Teams are mixed pairs, and each Player carries scorecards and an account. ' +
+    'The ContentPipeline gates pro posts, and on the fantasy side the FantasyLeague owns the teams and the draft, while FantasyScoring turns approved scores into fantasy standings.',
 };
 
 const NARRATION_TEXT = NARRATION_BY_VIEW[VIEW_KEY];
