@@ -17,7 +17,7 @@ import type { ContentMedia, ContentStatus, ContentSubmission } from './domain/pi
 import { UserProfile } from './domain/user/UserProfile';
 
 const createStarterSeed = () => SeasonService.createNamedSeason('league-demo', 'Summer Season', 4_000_000, undefined, { fantasyLeagueCount: 10 });
-const createStarterUpcomingSeed = () => SeasonService.createNamedSeason('league-demo-upcoming', 'Summer 2 Season', 8_000_000, undefined, { fantasyLeagueCount: 10 });
+const createStarterUpcomingSeed = () => SeasonService.createNamedSeason('league-demo-upcoming', 'Summer 2 Season', 4_000_000, undefined, { fantasyLeagueCount: 10 });
 const createEmptySeasonSeed = () => SeasonService.createNamedSeason('league-empty', '', 4_000_000, undefined, { fantasyLeagueCount: 10 });
 
 let seed = createStarterSeed();
@@ -294,6 +294,58 @@ const getTournamentName = (tournamentId: string): string =>
 
 const getDraftDisplayName = (participantId: string): string =>
   userDirectory.find((user) => user.id === participantId)?.displayName ?? participantId;
+
+type FantasyLeagueLobby = {
+  leagueId: string;
+  ownerId: string;
+  participantIds: string[];
+};
+
+let fantasyLeagueLobby: FantasyLeagueLobby | null = null;
+let fantasyLeagueLobbyLoaded = false;
+
+const normalizeFantasyLeagueLobby = (value: unknown): FantasyLeagueLobby | null => {
+  const record = value as Partial<FantasyLeagueLobby> | null;
+  if (!record || typeof record.leagueId !== 'string' || typeof record.ownerId !== 'string' || !Array.isArray(record.participantIds)) {
+    return null;
+  }
+
+  return {
+    leagueId: record.leagueId,
+    ownerId: record.ownerId,
+    participantIds: record.participantIds.filter((id): id is string => typeof id === 'string'),
+  };
+};
+
+// The Vite dev server holds the shared lobby so separate browsers join the same league (see demo/fill-the-league.md).
+const refreshFantasyLeagueLobby = async (): Promise<void> => {
+  try {
+    const response = await fetch('/api/demo/fantasy-league', { cache: 'no-store' });
+    fantasyLeagueLobby = response.ok ? normalizeFantasyLeagueLobby(await response.json()) : null;
+  } catch {
+    fantasyLeagueLobby = null;
+  }
+  fantasyLeagueLobbyLoaded = true;
+  renderApp();
+};
+
+const joinCurrentUserToFantasyLeague = async (): Promise<void> => {
+  const user = getCurrentUser();
+  try {
+    const response = await fetch('/api/demo/fantasy-league/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id }),
+    });
+    const body = normalizeFantasyLeagueLobby(await response.json().catch(() => null));
+    if (response.ok && body) {
+      fantasyLeagueLobby = body;
+    }
+  } catch {
+    // Lobby service is unavailable outside the local dev server; leave the current state untouched.
+  }
+  renderApp();
+};
 
 const getSelectedDraftRoom = (): DraftRoom | null => {
   if (!fantasyDraftSeries || !selectedDraftTournamentId) {
@@ -658,13 +710,23 @@ const saveContentPipeline = (): boolean => {
   }
 };
 
+const DEFAULT_DEMO_USER_ID = 'fantasy-owner';
+
 const getCurrentUser = (): UserProfile => {
-  const storedId = window.localStorage.getItem(USER_STORAGE_KEY) ?? proProfiles[0].id;
-  return userDirectory.find((user) => user.id === storedId) ?? proProfiles[0];
+  const storedId = window.localStorage.getItem(USER_STORAGE_KEY) ?? DEFAULT_DEMO_USER_ID;
+  return userDirectory.find((user) => user.id === storedId) ?? userDirectory.find((user) => user.id === DEFAULT_DEMO_USER_ID) ?? proProfiles[0];
 };
 
 const setCurrentUser = (userId: string): void => {
   window.localStorage.setItem(USER_STORAGE_KEY, userId);
+  const user = userDirectory.find((entry) => entry.id === userId);
+  if (user?.hasRole('fantasyLeagueOwner')) {
+    selectedDashboardFilter = 'Fantasy league';
+  } else if (user?.hasRole('leagueAdmin')) {
+    selectedDashboardFilter = 'Manage league';
+  } else if (user?.hasRole('scorekeeper')) {
+    selectedDashboardFilter = 'Scorekeeper assignment';
+  }
 };
 
 const submitFanPost = (authorId: string, body: string, media?: ContentMedia): boolean => {
@@ -831,24 +893,24 @@ const mockCurrentUser = (userId: string): void => {
   renderApp();
 };
 
+const roleLabels: Record<string, string> = {
+  siteAdmin: 'Super admin',
+  pro: 'Pro',
+  leagueAdmin: 'Admin',
+  scorekeeper: 'Scorekeeper',
+  fantasyLeagueOwner: 'Fantasy owner',
+  fantasyParticipant: 'Fantasy participant',
+  viewer: 'Viewer',
+};
+
+const tagLabels: Record<string, string> = {
+  ticketBuyer: 'Ticket buyer',
+  merchandiseBuyer: 'Merch buyer',
+  seasonPassHolder: 'Season pass',
+  sponsor: 'Sponsor',
+};
+
 const renderRoleBadges = (user: UserProfile): string => {
-  const roleLabels: Record<string, string> = {
-    siteAdmin: 'Super admin',
-    pro: 'Pro',
-    leagueAdmin: 'Admin',
-    scorekeeper: 'Scorekeeper',
-    fantasyLeagueOwner: 'Fantasy owner',
-    fantasyParticipant: 'Fantasy participant',
-    viewer: 'Viewer',
-  };
-
-  const tagLabels: Record<string, string> = {
-    ticketBuyer: 'Ticket buyer',
-    merchandiseBuyer: 'Merch buyer',
-    seasonPassHolder: 'Season pass',
-    sponsor: 'Sponsor',
-  };
-
   return `
     <div class="role-badges">
       ${user
@@ -864,6 +926,11 @@ const renderRoleBadges = (user: UserProfile): string => {
     </div>
   `;
 };
+
+const getRoleLabelForDisplay = (roles: string[]): string =>
+  roles
+    .map((role) => roleLabels[role] ?? role)
+    .join(', ');
 
 const getAssignedGroupForUser = (user: UserProfile): string | null => {
   const match = Object.entries(scorekeeperAssignments).find(([, person]) => person === user.displayName);
@@ -946,7 +1013,7 @@ const renderLoginPane = (): string => {
               .map(
                 (user) => `
                   <option value="${user.id}" ${user.id === currentUser.id ? 'selected' : ''}>
-                    ${user.displayName} — ${user.hasRole('pro') ? 'Pro' : user.getRoles().join(', ')}
+                    ${user.displayName} — ${getRoleLabelForDisplay(user.getRoles()) || 'Viewer'}
                   </option>
                 `,
               )
@@ -1062,25 +1129,6 @@ const renderSeasonCreator = (): string => {
             <option value="fli" ${upcomingSeed?.format !== 'multi-round' ? 'selected' : ''}>FLI Golf</option>
             <option value="multi-round" ${upcomingSeed?.format === 'multi-round' ? 'selected' : ''}>MultiRound</option>
           </select>
-        </label>
-        <label>
-          <span>Course layout</span>
-          <select name="courseLayout">
-            <option value="blue" ${(upcomingSeed?.courseLayout ?? 'blue') === 'blue' ? 'selected' : ''}>Blue basket setup</option>
-            <option value="red" ${(upcomingSeed?.courseLayout ?? 'blue') === 'red' ? 'selected' : ''}>Red basket setup</option>
-          </select>
-        </label>
-        <label>
-          <span>Course length</span>
-          <input
-            type="number"
-            name="courseHoleCount"
-            value="${upcomingSeed?.format === 'multi-round' ? upcomingSeed.scoringHoleCount : 18}"
-            min="9"
-            max="33"
-            step="1"
-          />
-          <small style="opacity: 0.8;">FLI Golf uses the Blue/Red basket setup on a 9-hole loop replayed for an 18-hole round. MultiRound keeps each round at 18 holes, with 9–33 holes available and 1–5 rounds possible.</small>
         </label>
         <button type="submit">${hasSeason() ? 'Create upcoming season' : 'Create season'}</button>
       </form>
@@ -1865,6 +1913,77 @@ const draftIcons: Record<string, string> = {
   lock: `<svg class="draft-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>`,
 };
 
+const FANTASY_LEAGUE_CAPACITY = 6;
+
+const renderFantasyLeagueLobbyPanel = (): string => {
+  const currentUser = getCurrentUser();
+
+  if (!fantasyLeagueLobbyLoaded) {
+    return `
+      <section class="panel" data-fantasy-league-lobby>
+        <p class="eyebrow">Fantasy league lobby</p>
+        <h2>League lobby</h2>
+        <p class="role-access-note">Loading the league lobby…</p>
+      </section>
+    `;
+  }
+
+  if (!fantasyLeagueLobby) {
+    return `
+      <section class="panel" data-fantasy-league-lobby>
+        <p class="eyebrow">Fantasy league lobby</p>
+        <h2>League lobby</h2>
+        <p class="role-access-note">League lobby is unavailable. Run the local dev server (npm run dev) to let participants join.</p>
+      </section>
+    `;
+  }
+
+  const lobby = fantasyLeagueLobby;
+  const count = lobby.participantIds.length;
+  const isFull = count >= FANTASY_LEAGUE_CAPACITY;
+  const alreadyJoined = lobby.participantIds.includes(currentUser.id);
+  const remaining = FANTASY_LEAGUE_CAPACITY - count;
+
+  const memberItems = lobby.participantIds
+    .map((participantId) => {
+      const isOwner = participantId === lobby.ownerId;
+      return `
+        <li data-lobby-member="${escapeHtml(participantId)}">
+          <strong>${escapeHtml(getDraftDisplayName(participantId))}</strong>
+          <span class="course-assignment">· ${isOwner ? 'Owner' : 'Participant'}</span>
+        </li>
+      `;
+    })
+    .join('');
+
+  return `
+    <section class="panel" data-fantasy-league-lobby data-league-id="${escapeHtml(lobby.leagueId)}">
+      <div class="section-header-row">
+        <div>
+          <p class="eyebrow">Fantasy league lobby</p>
+          <h2>League lobby</h2>
+        </div>
+        <span class="tee-time-badge" data-lobby-count>${count} of ${FANTASY_LEAGUE_CAPACITY}</span>
+      </div>
+      <p class="role-access-note">
+        ${escapeHtml(getDraftDisplayName(lobby.ownerId))} owns this league (ID: ${escapeHtml(lobby.leagueId)}).
+        Participants join one at a time until the league is full.
+      </p>
+      <ul class="list-block" data-lobby-members>
+        ${memberItems}
+      </ul>
+      ${isFull
+        ? `<p class="role-access-note" data-lobby-ready><strong>League full — ${count} of ${FANTASY_LEAGUE_CAPACITY} participants.</strong> The fantasy draft can now be seeded from Draft controls.</p>`
+        : `<p class="role-access-note" data-lobby-waiting>Waiting for ${remaining} more participant${remaining === 1 ? '' : 's'} to join…</p>`}
+      ${!alreadyJoined && !isFull
+        ? `<div class="action-row" style="margin-top: 12px;">
+            <button type="button" class="primary-button" data-join-fantasy-league="true">Join league as ${escapeHtml(currentUser.displayName)}</button>
+          </div>`
+        : ''}
+    </section>
+  `;
+};
+
 const renderFantasyDraftPanel = (): string => {
   const seedControls = `
     <div class="action-row" style="margin-top: 18px;">
@@ -1897,6 +2016,8 @@ const renderFantasyDraftPanel = (): string => {
         </p>
         ${seedControls}
       </section>
+
+      ${renderFantasyLeagueLobbyPanel()}
     `;
   }
 
@@ -2668,7 +2789,13 @@ const renderHomePage = (): string => {
     `;
   }
 
-  if (selectedFilter === 'Approve scores' || selectedFilter === 'Scorekeeper scorecard' || selectedFilter === 'Standings' || (currentUser.hasRole('scorekeeper') && !!getAssignedGroupForUser(currentUser))) {
+  if (
+    selectedFilter === 'Approve scores' ||
+    selectedFilter === 'Scorekeeper assignment' ||
+    selectedFilter === 'Scorekeeper scorecard' ||
+    selectedFilter === 'Standings' ||
+    (currentUser.hasRole('scorekeeper') && !!getAssignedGroupForUser(currentUser))
+  ) {
     return `
       <main class="page-shell">
         ${renderLoginPane()}
@@ -2807,6 +2934,8 @@ const renderHomePage = (): string => {
       <section class="dashboard-layout">
         <div class="dashboard-column">${renderDashboardMenus()}</div>
       </section>
+
+      ${renderFantasyLeagueLobbyPanel()}
 
       ${renderSeasonCreator()}
 
@@ -4246,6 +4375,12 @@ app.addEventListener('click', (event) => {
     return;
   }
 
+  const joinLeagueButton = event.target instanceof HTMLElement ? event.target.closest('[data-join-fantasy-league]') : null;
+  if (joinLeagueButton) {
+    void joinCurrentUserToFantasyLeague();
+    return;
+  }
+
   const seedScoredEventButton = event.target instanceof HTMLElement ? event.target.closest('[data-seed-scored-event]') : null;
   if (seedScoredEventButton) {
     seedScoredEventAndDraft();
@@ -4415,7 +4550,7 @@ app.addEventListener('submit', (event) => {
     const courseLayoutInput = form.querySelector('select[name="courseLayout"]') as HTMLSelectElement | null;
     const courseHoleCountInput = form.querySelector('input[name="courseHoleCount"]') as HTMLInputElement | null;
     const currentUser = getCurrentUser();
-    if (!seasonName || !purseInput || !titleSponsorNameInput || !seasonFormatInput || !courseLayoutInput || !courseHoleCountInput || !SeasonService.canCreateSeason(currentUser)) {
+    if (!seasonName || !purseInput || !titleSponsorNameInput || !seasonFormatInput || !SeasonService.canCreateSeason(currentUser)) {
       return;
     }
 
@@ -4439,8 +4574,8 @@ app.addEventListener('submit', (event) => {
     const seasonId = `season-${Date.now()}`;
     const purseAmount = Number.isFinite(purseValue) && purseValue > 0 ? purseValue : 4_000_000;
     const format = seasonFormatInput.value === 'multi-round' ? 'multi-round' : 'fli';
-    const layout = courseLayoutInput.value === 'red' ? 'red' : 'blue';
-    const courseHoleCount = format === 'multi-round' ? Number(courseHoleCountInput.value) || 18 : 18;
+    const layout = courseLayoutInput?.value === 'red' ? 'red' : 'blue';
+    const courseHoleCount = format === 'multi-round' ? Number(courseHoleCountInput?.value ?? 18) || 18 : 18;
 
     if (format === 'fli' && courseHoleCount !== 18) {
       seasonFormMessage = 'FLI Golf keeps each played round at 18 holes by replaying the 9-hole loop after the intermission.';
@@ -4548,3 +4683,4 @@ app.addEventListener('submit', (event) => {
 
 window.addEventListener('popstate', renderApp);
 renderApp();
+void refreshFantasyLeagueLobby();
