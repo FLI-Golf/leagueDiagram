@@ -6,7 +6,7 @@ same conventions as [fill-the-league.md](fill-the-league.md) and
 [draft-walkthrough.md](draft-walkthrough.md) (caption overlays, ElevenLabs
 narration, git-ignored captures, finals in `demo/exports/`).
 
-## What each video shows (application UI only, ~35–41 s)
+## What each video shows (application UI only, ~37–43 s)
 
 1. Sign in as **Super Admin** through the mock current-user switcher (the
    diagram is siteAdmin-only) and open the schema view via the **Diagram**

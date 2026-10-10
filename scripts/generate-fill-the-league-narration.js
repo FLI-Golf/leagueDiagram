@@ -104,9 +104,17 @@ const main = async () => {
     const audioFile = path.join(NARRATION_DIR, segment.audio);
     const videoDuration = durationOf(videoFile);
     const audioDuration = durationOf(audioFile);
+
+    // Never cut narration off: freeze the segment's last frame to fit the
+    // audio, plus a short tail so no segment ends abruptly.
+    const tailSeconds = 0.4;
+    const targetDuration = Math.max(videoDuration, audioDuration) + tailSeconds;
+    const videoPadSeconds = targetDuration - videoDuration;
     if (audioDuration > videoDuration) {
-      console.log(`Note: narration (${audioDuration.toFixed(1)}s) exceeds segment ${segment.video} (${videoDuration.toFixed(1)}s); it will fade out early.`);
+      console.log(`Narration (${audioDuration.toFixed(1)}s) runs past segment ${segment.video} (${videoDuration.toFixed(1)}s); freezing the last frame to fit.`);
     }
+
+    const filterGraph = `[0:v]tpad=stop_mode=clone:stop=${videoPadSeconds.toFixed(2)}[v];[1:a]apad,atrim=0:${targetDuration.toFixed(2)},afade=t=out:st=${(targetDuration - 0.6).toFixed(2)}:d=0.6[a]`;
 
     const narratedFile = path.join(NARRATION_DIR, segment.video.replace('.webm', '.narrated.mp4'));
     execFileSync('ffmpeg', [
@@ -114,8 +122,8 @@ const main = async () => {
       '-i', videoFile,
       '-i', audioFile,
       '-filter_complex',
-      `[1:a]apad,atrim=0:${videoDuration.toFixed(2)},afade=t=out:st=${Math.max(0, videoDuration - 0.4).toFixed(2)}:d=0.4[a]`,
-      '-map', '0:v',
+      filterGraph,
+      '-map', '[v]',
       '-map', '[a]',
       '-c:v', 'libx264',
       '-crf', '23',

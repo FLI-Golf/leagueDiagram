@@ -265,7 +265,8 @@ test(`Entity map tour: highlight each entity on the ${TOUR.tabLabel} diagram vie
   }
 
   await showDemoCaption(page, `That is the ${TOUR.tabLabel} map — every entity and connection covered`);
-  await demoWait(1800);
+  // Closing beat: hold on the full canvas so the video does not cut off.
+  await demoWait(3200);
 
   await context.close();
   const video = page.video();

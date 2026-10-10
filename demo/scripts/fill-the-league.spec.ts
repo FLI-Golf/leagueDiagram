@@ -292,7 +292,11 @@ test('Fill the league: owner plus five participants join through the UI', async 
     const startDraftButton = page.getByRole('button', { name: 'Start draft' });
     await expect(startDraftButton).toBeVisible();
     await moveMouseToElement(page, startDraftButton, QUICK_MOVE);
-    await demoWait(1500);
+    await demoWait(1200);
+
+    // Closing beat: hold on the seeded draft lobby so the video does not cut off.
+    await showDemoCaption(page, 'League full at 6 of 6 — the Sunset Open draft is ready to start');
+    await demoWait(3000);
 
     segments.push(await saveSegment(page, context, '05-owner-final-six-members.webm'));
   }

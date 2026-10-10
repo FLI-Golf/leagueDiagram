@@ -50,7 +50,7 @@ node scripts/generate-draft-walkthrough-narration.js   # narration (needs ELEVEN
 ```
 
 Output: `demo/exports/draft-walkthrough/draft-walkthrough.mp4`
-(38.0 s, 1280×720 H.264 + AAC) plus a narrated `draft-walkthrough.webm` next to
+(44.1 s, 1280×720 H.264 + AAC) plus a narrated `draft-walkthrough.webm` next to
 it (Playwright records raw video without audio, so narration is muxed in
 afterwards). Finals live in `demo/exports/` because Playwright wipes
 `demo/captures/` on every run; both dirs are git-ignored.
@@ -60,6 +60,8 @@ afterwards). Finals live in `demo/exports/` because Playwright wipes
 - The 7-second pick clock makes a full real-time draft ~3 minutes, so the
   video fast-forwards with the app's **Complete draft** control after the
   first live auto-picks.
+- Endings: every walkthrough holds a closing beat, and the narration mux
+  freezes the last frame to fit the audio, so videos never cut off mid-line.
 - The leaderboard shows projected mock ratings; real scoring depends on the
   admin confirming team finish orders (separate workflow).
 - Draft state is in-memory per page load, so the walkthrough is a single

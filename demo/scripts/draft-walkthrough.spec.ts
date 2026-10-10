@@ -193,6 +193,10 @@ test('Draft walkthrough: owner seeds, starts, and completes the Sunset Open draf
   await moveMouseToElement(page, leaderboard, QUICK_MOVE);
   await demoWait(2500);
 
+  // Closing beat: hold on the leaderboard so the video does not cut off.
+  await showDemoCaption(page, 'The Sunset Open draft is complete — on to the season');
+  await demoWait(3000);
+
   await context.close();
   const video = page.video();
   if (!video) {

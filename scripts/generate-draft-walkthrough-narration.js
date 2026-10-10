@@ -76,11 +76,17 @@ const main = async () => {
 
   const videoDuration = durationOf(VIDEO_WEBM);
   const audioDuration = durationOf(AUDIO_MP3);
+
+  // Never cut narration off: freeze the video's last frame to fit the audio,
+  // plus a short tail so the video does not end abruptly.
+  const tailSeconds = 0.4;
+  const targetDuration = Math.max(videoDuration, audioDuration) + tailSeconds;
+  const videoPadSeconds = targetDuration - videoDuration;
   if (audioDuration > videoDuration) {
-    console.log(`Note: narration (${audioDuration.toFixed(1)}s) exceeds the video (${videoDuration.toFixed(1)}s); it will fade out early.`);
+    console.log(`Narration (${audioDuration.toFixed(1)}s) runs past the video (${videoDuration.toFixed(1)}s); freezing the last frame to fit.`);
   }
 
-  const audioFilter = `[1:a]apad,atrim=0:${videoDuration.toFixed(2)},afade=t=out:st=${Math.max(0, videoDuration - 0.4).toFixed(2)}:d=0.4[a]`;
+  const filterGraph = `[0:v]tpad=stop_mode=clone:stop=${videoPadSeconds.toFixed(2)}[v];[1:a]apad,atrim=0:${targetDuration.toFixed(2)},afade=t=out:st=${(targetDuration - 0.6).toFixed(2)}:d=0.6[a]`;
 
   fs.mkdirSync(EXPORT_DIR, { recursive: true });
 
@@ -90,8 +96,8 @@ const main = async () => {
     '-i', VIDEO_WEBM,
     '-i', AUDIO_MP3,
     '-filter_complex',
-    audioFilter,
-    '-map', '0:v',
+    filterGraph,
+    '-map', '[v]',
     '-map', '[a]',
     '-c:v', 'libx264',
     '-crf', '23',
@@ -109,10 +115,11 @@ const main = async () => {
     '-i', VIDEO_WEBM,
     '-i', AUDIO_MP3,
     '-filter_complex',
-    audioFilter,
-    '-map', '0:v',
+    filterGraph,
+    '-map', '[v]',
     '-map', '[a]',
-    '-c:v', 'copy',
+    '-c:v', 'libvpx-vp9',
+    '-crf', '33',
     '-c:a', 'libopus',
     '-b:a', '128k',
     FINAL_WEBM,

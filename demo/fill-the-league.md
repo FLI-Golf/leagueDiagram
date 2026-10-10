@@ -122,7 +122,7 @@ Recorded run on the `feat/fill-the-league-walkthrough` branch (Playwright
   **Seed fantasy draft** action built the real "Sunset Open draft" lobby with
   an enabled **Start draft** button. Nothing beyond that is claimed.
 - **Video** — 5 narrated, captioned segments (application UI only) stitched to
-  `demo/exports/fill-the-league/fill-the-league-walkthrough.mp4`, 37.7 s,
+  `demo/exports/fill-the-league/fill-the-league-walkthrough.mp4`, 43.3 s,
   1280×720 H.264 + AAC narration (ElevenLabs, one clip per segment).
   Playwright: 1 passed.
 
