@@ -38,6 +38,11 @@ const NARRATION_BY_VIEW = {
     'Here is the course entity map at a glance. Green edges mean has many; blue edges mean has one. ' +
     'The Course is a playable layout used by a tournament. Each Hole carries distance, basket placement, and sponsor branding. ' +
     'And a Sponsor is the brand attached to a hole or the league.',
+  sponsorship:
+    'Here is the sponsorship entity map at a glance — who is paying for what. Green edges mean has many; blue edges mean has one. ' +
+    'The SponsorshipProgram holds all of a season\u2019s sponsorships, starting with the single title sponsor. Each Sponsorship is one agreement: sponsor, tier, scope, amount, and status. ' +
+    'A Sponsor is the brand behind an agreement. The Season carries the title sponsorship, the Course carries venue deals, ' +
+    'each Hole carries branding, and Players and Teams carry endorsement deals.',
 };
 
 const NARRATION_TEXT = NARRATION_BY_VIEW[VIEW_KEY];

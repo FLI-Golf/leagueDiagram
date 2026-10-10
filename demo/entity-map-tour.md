@@ -1,9 +1,10 @@
 # Entity map tours — diagram view highlight walkthroughs
 
 Narrated highlight tours of the entity map diagram views
-(`/diagram/pros`, `/diagram/league`, `/diagram/fantasy`, `/diagram/course`),
-recorded with the same conventions as [fill-the-league.md](fill-the-league.md)
-and [draft-walkthrough.md](draft-walkthrough.md) (caption overlays, ElevenLabs
+(`/diagram/pros`, `/diagram/league`, `/diagram/fantasy`, `/diagram/course`,
+`/diagram/sponsorship`), recorded with the same conventions as
+[fill-the-league.md](fill-the-league.md) and
+[draft-walkthrough.md](draft-walkthrough.md) (caption overlays, ElevenLabs
 narration, git-ignored captures, finals in `demo/exports/`).
 
 ## What each video shows (application UI only, ~28–43 s)
@@ -29,6 +30,8 @@ narration, git-ignored captures, finals in `demo/exports/`).
   FantasyRoster → FantasyPlayer → FantasyScoring → TournamentResult →
   FantasyDraft → DraftRoom.
 - **Course** (`entity-map-tour-course.mp4`): Course → Hole → Sponsor.
+- **Sponsorship** (`entity-map-tour-sponsorship.mp4`): SponsorshipProgram →
+  Sponsorship → Sponsor → Season → Course → Hole → Player → Team.
 
 ## Verification (asserted in the spec)
 
@@ -44,10 +47,12 @@ npx playwright test entity-map-tour                              # Pros view (or
 DIAGRAM_VIEW=league npx playwright test entity-map-tour          # League view (or: npm run demo:entity-map:league)
 DIAGRAM_VIEW=fantasy npx playwright test entity-map-tour         # Fantasy view (or: npm run demo:entity-map:fantasy)
 DIAGRAM_VIEW=course npx playwright test entity-map-tour          # Course view (or: npm run demo:entity-map:course)
+DIAGRAM_VIEW=sponsorship npx playwright test entity-map-tour     # Sponsorship view (or: npm run demo:entity-map:sponsorship)
 node scripts/generate-entity-map-tour-narration.js               # narration, Pros (default)
 node scripts/generate-entity-map-tour-narration.js --view=league # narration, League
 node scripts/generate-entity-map-tour-narration.js --view=fantasy # narration, Fantasy
 node scripts/generate-entity-map-tour-narration.js --view=course # narration, Course
+node scripts/generate-entity-map-tour-narration.js --view=sponsorship # narration, Sponsorship
 ```
 
 Output: `demo/exports/entity-map-tour/entity-map-tour-<view>.mp4` (plus a

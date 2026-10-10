@@ -91,6 +91,22 @@ const DIAGRAM_TOURS: Record<string, DiagramTour> = {
       { name: 'Sponsor', summary: 'Branding attached to a hole or the league.' },
     ],
   },
+  sponsorship: {
+    slug: 'sponsorship',
+    tabLabel: 'Sponsorship',
+    title: 'Who is paying for what',
+    overviewCaption: 'The Sponsorship entity map at a glance — who is paying for what',
+    stops: [
+      { name: 'SponsorshipProgram', summary: 'Season sponsorships, starting with the single title sponsor.' },
+      { name: 'Sponsorship', summary: 'One agreement: sponsor, tier, scope, amount, and status.' },
+      { name: 'Sponsor', summary: 'Branding attached to a hole or the league.' },
+      { name: 'Season', summary: 'The parent record: purse, league reference, schedule, and sponsorship program.' },
+      { name: 'Course', summary: 'The layout a tournament is played on.' },
+      { name: 'Hole', summary: 'Distance, basket placement, and sponsor branding for one hole.' },
+      { name: 'Player', summary: 'A pro on a team, with scorecards and an account.' },
+      { name: 'Team', summary: 'A mixed pair of pros entered in the tournament.' },
+    ],
+  },
 };
 
 const VIEW_KEY = process.env.DIAGRAM_VIEW ?? 'pros';
