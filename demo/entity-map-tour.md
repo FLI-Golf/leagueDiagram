@@ -1,12 +1,12 @@
 # Entity map tours — diagram view highlight walkthroughs
 
 Narrated highlight tours of the entity map diagram views
-(`/diagram/pros`, `/diagram/league`, `/diagram/fantasy`), recorded with the
-same conventions as [fill-the-league.md](fill-the-league.md) and
-[draft-walkthrough.md](draft-walkthrough.md) (caption overlays, ElevenLabs
+(`/diagram/pros`, `/diagram/league`, `/diagram/fantasy`, `/diagram/course`),
+recorded with the same conventions as [fill-the-league.md](fill-the-league.md)
+and [draft-walkthrough.md](draft-walkthrough.md) (caption overlays, ElevenLabs
 narration, git-ignored captures, finals in `demo/exports/`).
 
-## What each video shows (application UI only, ~37–43 s)
+## What each video shows (application UI only, ~28–43 s)
 
 1. Sign in as **Super Admin** through the mock current-user switcher (the
    diagram is siteAdmin-only) and open the schema view via the **Diagram**
@@ -28,6 +28,7 @@ narration, git-ignored captures, finals in `demo/exports/`).
 - **Fantasy** (`entity-map-tour-fantasy.mp4`): FantasyLeague → FantasyTeam →
   FantasyRoster → FantasyPlayer → FantasyScoring → TournamentResult →
   FantasyDraft → DraftRoom.
+- **Course** (`entity-map-tour-course.mp4`): Course → Hole → Sponsor.
 
 ## Verification (asserted in the spec)
 
@@ -42,9 +43,11 @@ npm install && npx playwright install chromium --with-deps
 npx playwright test entity-map-tour                              # Pros view (or: npm run demo:entity-map)
 DIAGRAM_VIEW=league npx playwright test entity-map-tour          # League view (or: npm run demo:entity-map:league)
 DIAGRAM_VIEW=fantasy npx playwright test entity-map-tour         # Fantasy view (or: npm run demo:entity-map:fantasy)
+DIAGRAM_VIEW=course npx playwright test entity-map-tour          # Course view (or: npm run demo:entity-map:course)
 node scripts/generate-entity-map-tour-narration.js               # narration, Pros (default)
 node scripts/generate-entity-map-tour-narration.js --view=league # narration, League
 node scripts/generate-entity-map-tour-narration.js --view=fantasy # narration, Fantasy
+node scripts/generate-entity-map-tour-narration.js --view=course # narration, Course
 ```
 
 Output: `demo/exports/entity-map-tour/entity-map-tour-<view>.mp4` (plus a

@@ -34,6 +34,10 @@ const NARRATION_BY_VIEW = {
     'The FantasyRoster holds the drafted set, and each FantasyPlayer is a league pro wrapped with fantasy scoring. ' +
     'FantasyScoring turns approved event scores into fantasy standings, based on the TournamentResult. ' +
     'The FantasyDraft holds the rounds, picks, and resulting rosters, and the DraftRoom is the live draft state with pick timers and auto picks.',
+  course:
+    'Here is the course entity map at a glance. Green edges mean has many; blue edges mean has one. ' +
+    'The Course is a playable layout used by a tournament. Each Hole carries distance, basket placement, and sponsor branding. ' +
+    'And a Sponsor is the brand attached to a hole or the league.',
 };
 
 const NARRATION_TEXT = NARRATION_BY_VIEW[VIEW_KEY];

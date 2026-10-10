@@ -80,6 +80,17 @@ const DIAGRAM_TOURS: Record<string, DiagramTour> = {
       { name: 'DraftRoom', summary: 'Live draft state with pick timers and auto picks.' },
     ],
   },
+  course: {
+    slug: 'course',
+    tabLabel: 'Course',
+    title: 'Courses, holes, and sponsors',
+    overviewCaption: 'The Course entity map at a glance — layouts, holes, and sponsors',
+    stops: [
+      { name: 'Course', summary: 'The layout a tournament is played on.' },
+      { name: 'Hole', summary: 'Distance, basket placement, and sponsor branding for one hole.' },
+      { name: 'Sponsor', summary: 'Branding attached to a hole or the league.' },
+    ],
+  },
 };
 
 const VIEW_KEY = process.env.DIAGRAM_VIEW ?? 'pros';
