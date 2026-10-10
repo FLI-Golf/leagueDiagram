@@ -16,7 +16,8 @@
     "demo:fill-league": "playwright test fill-the-league",
     "demo:draft": "playwright test draft-walkthrough",
     "demo:entity-map": "playwright test entity-map-tour",
-    "demo:entity-map:league": "DIAGRAM_VIEW=league playwright test entity-map-tour"
+    "demo:entity-map:league": "DIAGRAM_VIEW=league playwright test entity-map-tour",
+    "demo:entity-map:fantasy": "DIAGRAM_VIEW=fantasy playwright test entity-map-tour"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

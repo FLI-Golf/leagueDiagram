@@ -28,6 +28,12 @@ const NARRATION_BY_VIEW = {
     'The SponsorshipProgram holds the season sponsorships, and each Sponsorship is one agreement with a brand. ' +
     'SeasonBootstrapResult is the assembled seed handed to the app. The EventSchedule carries the dated tournaments, ' +
     'TournamentResult the ranked results for one event, and the LeagueTable rolls every event up into cumulative standings.',
+  fantasy:
+    'Here is the fantasy entity map at a glance — then each entity in turn. Green edges mean has many; blue edges mean has one. ' +
+    'The FantasyLeague is the competition that owns the teams and the draft. Each FantasyTeam is one manager and the roster they drafted. ' +
+    'The FantasyRoster holds the drafted set, and each FantasyPlayer is a league pro wrapped with fantasy scoring. ' +
+    'FantasyScoring turns approved event scores into fantasy standings, based on the TournamentResult. ' +
+    'The FantasyDraft holds the rounds, picks, and resulting rosters, and the DraftRoom is the live draft state with pick timers and auto picks.',
 };
 
 const NARRATION_TEXT = NARRATION_BY_VIEW[VIEW_KEY];

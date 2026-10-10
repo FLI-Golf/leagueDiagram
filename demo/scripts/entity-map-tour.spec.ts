@@ -64,6 +64,22 @@ const DIAGRAM_TOURS: Record<string, DiagramTour> = {
       { name: 'LeagueTable', summary: 'Cumulative standings rolled up from every approved event.' },
     ],
   },
+  fantasy: {
+    slug: 'fantasy',
+    tabLabel: 'Fantasy',
+    title: 'Fantasy leagues and drafts',
+    overviewCaption: 'The Fantasy entity map at a glance — leagues, rosters, scoring, and the draft',
+    stops: [
+      { name: 'FantasyLeague', summary: 'The fantasy competition that owns teams and the draft.' },
+      { name: 'FantasyTeam', summary: 'A fantasy manager and the pros they drafted.' },
+      { name: 'FantasyRoster', summary: 'The drafted set of fantasy players.' },
+      { name: 'FantasyPlayer', summary: 'A league pro wrapped with fantasy scoring.' },
+      { name: 'FantasyScoring', summary: 'Derives fantasy standings from approved event scores.' },
+      { name: 'TournamentResult', summary: 'One tournament: the course it is played on, the teams entered, and the ranked scorecards.' },
+      { name: 'FantasyDraft', summary: 'Draft rounds, picks, and the resulting rosters.' },
+      { name: 'DraftRoom', summary: 'Live draft state with pick timers and auto picks.' },
+    ],
+  },
 };
 
 const VIEW_KEY = process.env.DIAGRAM_VIEW ?? 'pros';
