@@ -21,7 +21,10 @@
     "demo:entity-map:course": "DIAGRAM_VIEW=course playwright test entity-map-tour",
     "demo:entity-map:sponsorship": "DIAGRAM_VIEW=sponsorship playwright test entity-map-tour",
     "demo:entity-map:pipelines": "DIAGRAM_VIEW=pipelines playwright test entity-map-tour",
-    "demo:entity-map:overview": "DIAGRAM_VIEW=overview playwright test entity-map-tour"
+    "demo:entity-map:overview": "DIAGRAM_VIEW=overview playwright test entity-map-tour",
+    "demo:scorekeeping": "playwright test scorekeeping-pipeline",
+    "demo:fantasy-scoring": "playwright test fantasy-scoring",
+    "demo:content-approval": "playwright test content-approval"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
