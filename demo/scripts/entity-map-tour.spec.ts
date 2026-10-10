@@ -118,6 +118,32 @@ test('Entity map tour: highlight each entity on the Pros diagram view', async ({
   await expect(canvas.locator('g.node').first()).toBeVisible({ timeout: 20000 });
   await demoWait(600);
 
+  // Show the whole diagram at once before touring individual entities.
+  await showDemoCaption(page, 'The Pros entity map at a glance — six entities and how they connect');
+  await page.evaluate(() => {
+    const canvasEl = document.querySelector('.diagram-canvas');
+    const svg = canvasEl?.querySelector('svg');
+    if (!(canvasEl instanceof HTMLElement) || !svg) {
+      return;
+    }
+    const bounds = svg.getBoundingClientRect();
+    const scale = Math.min(1, 1120 / bounds.width, 500 / bounds.height);
+    canvasEl.style.transform = `scale(${scale})`;
+    canvasEl.style.transformOrigin = 'top center';
+    canvasEl.style.height = `${bounds.height * scale + 24}px`;
+  });
+  const canvasPanel = page.locator('.diagram-canvas-panel');
+  await canvasPanel.scrollIntoViewIfNeeded();
+  await demoWait(2800);
+  await page.evaluate(() => {
+    const canvasEl = document.querySelector('.diagram-canvas');
+    if (!(canvasEl instanceof HTMLElement)) {
+      return;
+    }
+    canvasEl.style.transform = '';
+    canvasEl.style.height = '';
+  });
+
   // Pause on the legend so viewers can read the edge conventions.
   await showDemoCaption(page, 'Green edges: has many · blue edges: has one');
   const legend = page.locator('.diagram-legend');

@@ -23,9 +23,9 @@ const FINAL_WEBM = path.join(EXPORT_DIR, 'entity-map-tour.webm');
 
 const VOICE_ID = process.env.DEMO_NARRATION_VOICE ?? '21m00Tcm4TlvDq8ikWAM';
 
-// Sized to the ~45-second single-take recording.
+// Sized to the ~40-second single-take recording.
 const NARRATION_TEXT =
-  'A guided tour of the pros entity map. Green edges mean has many; blue edges mean has one. ' +
+  'A guided tour of the pros entity map — first the whole map at a glance. Green edges mean has many; blue edges mean has one. ' +
   'UserProfile is the account behind a pro, admin, scorekeeper, or fan. Player is a pro on a team, with scorecards and an account. ' +
   'A Team is a mixed pair of pros entered in the tournament. The Scorecard holds hole-by-hole results for one pro in one round. ' +
   'A ContentSubmission is a post with its review status. And the ContentPipeline holds pro posts until an admin approves them.';

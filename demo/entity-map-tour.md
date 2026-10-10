@@ -5,13 +5,15 @@ recorded with the same conventions as [fill-the-league.md](fill-the-league.md)
 and [draft-walkthrough.md](draft-walkthrough.md) (caption overlays, ElevenLabs
 narration, git-ignored captures, finals in `demo/exports/`).
 
-## What the video shows (application UI only, ~32 s)
+## What the video shows (application UI only, ~35 s)
 
 1. Sign in as **Super Admin** through the mock current-user switcher (the
    diagram is siteAdmin-only) and open the schema view via the **Diagram**
    menu card, then the **Pros** tab.
-2. Pause on the legend: green edges mean *has many*, blue edges mean *has one*.
-3. Highlight each entity in turn — the cursor moves onto the mermaid node, the
+2. **Overview at a glance** — the whole Pros entity map is scaled to fit the
+   viewport so all six entities and their connections are visible in one frame.
+3. Pause on the legend: green edges mean *has many*, blue edges mean *has one*.
+4. Highlight each entity in turn — the cursor moves onto the mermaid node, the
    app's own info tooltip shows the entity summary, and a tour-only orange
    ring (injected overlay, not an app change) marks the active node:
 
